@@ -1,0 +1,21 @@
+{
+   XrmGetStringDatabase is fairly obnoxious about leaving reachable memory around
+   Memcheck:Leak
+   fun:realloc
+   obj:*/libX11.so*
+   obj:*/libX11.so*
+   obj:*/libX11.so*
+   fun:_XlcCreateLC
+   fun:_XlcDefaultLoader
+   fun:_XOpenLC
+   fun:_XrmInitParseInfo
+   obj:*/libX11.so*
+   fun:XrmGetStringDatabase
+}
+{
+   fontconfig 2.8.0 version
+   Memcheck:Addr4
+   ...
+   fun:FcConfigParseAndLoad
+   ...
+}
