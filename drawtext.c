@@ -455,10 +455,12 @@ glyph_map(string_t *line, glyphs_t *gl)
 
 	int gi = 0;
 	size_t oi = 0;
-	for(size_t chsiz; (chsiz = utf8chsiz(utf8, len)) != 0 &&
-			gi < gl->nmemb && oi < line->array.nmemb; utf8 += chsiz, len -= chsiz) {
+	for(size_t chsiz = 0; (chsiz = utf8chsiz(utf8, len)) != 0 &&
+			gi < gl->nmemb && oi < line->array.nmemb;
+			utf8 += chsiz, len -= chsiz) {
 		gl->glyph_to_offset[gi] = oi;
 		gl->offset_to_glyph[oi] = gi;
+
 		oi += chsiz;
 		gi++;
 	}
