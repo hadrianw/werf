@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -8,9 +9,7 @@ void *
 xcalloc(size_t nmemb, size_t size)
 {
 	void *ptr = calloc(nmemb, size);
-	if(ptr == NULL) {
-		die("calloc failed.\n");
-	}
+	DIEIF(ptr == NULL);
 	return ptr;
 }
 
@@ -18,9 +17,7 @@ void *
 xmalloc(size_t nmemb, size_t size)
 {
 	void *ptr = malloc(nmemb * size);
-	if(ptr == NULL) {
-		die("malloc failed.\n");
-	}
+	DIEIF(ptr == NULL);
 	return ptr;
 }
 
@@ -28,9 +25,7 @@ void *
 xrealloc(void *ptr, size_t nmemb, size_t size)
 {
 	ptr = realloc(ptr, nmemb * size);
-	if(nmemb > 0 && ptr == NULL) {
-		die("realloc failed.\n");
-	}
+	DIEIF(nmemb > 0 && ptr == NULL);
 	return ptr;
 }
 
@@ -77,3 +72,12 @@ die(const char *fmt, ...) {
 	va_end(ap);
 	exit(-1);
 }
+
+void
+dieif(const char *file, int line, const char *func, const char *msg, int die_req)
+{
+	if(die_req) {
+		die("%s:%d:%s: fatal error: %s (%s)\n", file, line, func, msg, strerror(errno));
+	}
+}
+

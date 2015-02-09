@@ -56,12 +56,7 @@ fontset_init(fontset_t *f, FcPattern *pattern)
 		return -1;
 	}
 
-	f->cache = calloc(f->set->nfont, sizeof f->cache[0]);
-	if(f->cache == NULL) {
-		fputs("calloc failed\n", stderr);
-		FcFontSetDestroy(f->set);
-		return -1;
-	}
+	f->cache = xcalloc(f->set->nfont, sizeof f->cache[0]);
 
 	f->pattern = pattern;
 	fontset_get_font(f, 0);

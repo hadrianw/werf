@@ -9,6 +9,8 @@
 #define DEFAULT(a, b) (a) = (a) ? (a) : (b)
 #define BETWEEN(x, a, b) ((a) <= (x) && (x) <= (b))
 
+#define DIEIF(x) dieif(__FILE__, __LINE__, __FUNCTION__, #x, (x))
+
 typedef unsigned char uchar;
 
 static inline size_t
@@ -66,3 +68,4 @@ void *reallocdup(void *heap, size_t nnew, const void *stack, size_t nstack, size
 void *memshift(ssize_t shift, void *src, size_t nmemb, size_t size);
 
 void die(const char *fmt, ...);
+void dieif(const char *file, int line, const char *func, const char *msg, int die_req);

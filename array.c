@@ -25,27 +25,18 @@ array_resize(array_t *a, size_t n)
 	}
 }
 
-int
+void
 array_extend(array_t *a, ssize_t nchange)
 {
-	if(-nchange > (ssize_t)a->nmemb) {
-		return -1;
-	}
+	DIEIF(-nchange > (ssize_t)a->nmemb);
 	array_resize(a, a->nmemb + nchange);
-	return 0;
 }
 
-static inline int
+static void
 slice_validate(slice_t *slice, size_t *out_start, size_t *out_end)
 {
-	if(slice == NULL) {
-		fputs("slice_validate: slice == NULL\n", stderr);
-		return -1;
-	}
-	if(slice->array == NULL) {
-		fputs("slice_validate: slice->array == NULL\n", stderr);
-		return -1;
-	}
+	DIEIF(slice == NULL);
+	DIEIF(slice->array == NULL);
 	
 	ssize_t start;
 	ssize_t end;
@@ -63,36 +54,21 @@ slice_validate(slice_t *slice, size_t *out_start, size_t *out_end)
 		end = slice->array->nmemb + slice->end+1;
 	}
 
-	if(start < 0) {
-		fputs("slice_validate: start < 0\n", stderr);
-		return -1;
-	}
-	if(end < 0) {
-		fputs("slice_validate: end < 0\n", stderr);
-		return -1;
-	}
-	if(start > end) {
-		fputs("slice_validate: start > end\n", stderr);
-		return -1;
-	}
-	if((size_t)end > slice->array->nmemb) {
-		fputs("slice_validate: end > slice->array->nmemb\n", stderr);
-		return -1;
-	}
+	DIEIF(start < 0);
+	DIEIF(end < 0);
+	DIEIF(start > end);
+	DIEIF((size_t)end > slice->array->nmemb);
 
 	*out_start = start;
 	*out_end = end;
-	return 0;
 }
 
-int
+void
 slice_apply(slice_t *slice, slice_memb_func_t func)
 {
 	size_t start;
 	size_t end;
-	if(slice_validate(slice, &start, &end)) {
-		return -1;
-	}
+	slice_validate(slice, &start, &end);
 
 	char *ptr = slice->array->ptr;
 	ptr += start * slice->array->size;
@@ -100,34 +76,29 @@ slice_apply(slice_t *slice, slice_memb_func_t func)
 		func(ptr);
 		ptr += slice->array->size;
 	}
-	return 0;
 }
 
-int
+void
 slice_shift(slice_t *slice, ssize_t shift)
 {
 	size_t start;
 	size_t end;
-	if(slice_validate(slice, &start, &end)) {
-		return -1;
-	}
+	slice_validate(slice, &start, &end);
 
 	size_t nmemb = end - start;
 
 	char *first = slice->array->ptr;
 	first += start * slice->array->size;
 	memshift(shift, first, nmemb, slice->array->size);
-	return 0;
 }
 
-int
+void
 slice_resize(slice_t *slice, size_t nmemb)
 {
 	size_t start;
 	size_t end;
-	if(slice_validate(slice, &start, &end)) {
-		return -1;
-	}
+	slice_validate(slice, &start, &end);
+
 	ssize_t shift = nmemb - (end - start);
 	if(shift > 0) {
 		array_extend(slice->array, shift); 
@@ -138,7 +109,6 @@ slice_resize(slice_t *slice, size_t nmemb)
 	if(shift < 0) {
 		array_extend(slice->array, shift); 
 	}
-	return 0;
 }
 
 void *
@@ -146,7 +116,8 @@ slice_get(slice_t *slice, ssize_t idx)
 {
 	size_t start;
 	size_t end;
-	if(slice_validate(slice, &start, &end) || start == end) {
+	slice_validate(slice, &start, &end);
+	if(start == end) {
 		return NULL;
 	}
 
@@ -157,22 +128,10 @@ slice_get(slice_t *slice, ssize_t idx)
 		idx = last + idx+1;
 	}
 
-	if(idx < 0) {
-		fputs("slice_get: idx < 0\n", stderr);
-		return NULL;
-	}
-	if((size_t)idx < start) {
-		fputs("slice_get: idx < start\n", stderr);
-		return NULL;
-	}
-	if((size_t)idx > end) {
-		fputs("slice_get: idx > end\n", stderr);
-		return NULL;
-	}
-	if((size_t)idx >= slice->array->nmemb) {
-		fputs("slice_get: idx >= slice->array->nmemb\n", stderr);
-		return NULL;
-	}
+	DIEIF(idx < 0);
+	DIEIF((size_t)idx < start);
+	DIEIF((size_t)idx > end);
+	DIEIF((size_t)idx >= slice->array->nmemb);
 
 	return (char*)slice->array->ptr + idx * slice->array->size;
 }

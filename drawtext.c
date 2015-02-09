@@ -74,7 +74,7 @@ typedef struct {
 	size_t vis_first_idx;
 } line_to_vis_t;
 
-int
+void
 windowing_init_input_methods()
 {
 	char *locale_mods[] = {
@@ -89,28 +89,18 @@ windowing_init_input_methods()
 		g.win.xim = XOpenIM(g.win.display, NULL, NULL, NULL);
 	} while(g.win.xim == NULL && i < LEN(locale_mods));
 
-	if(g.win.xim == NULL) {
-		fputs("XOpenIM failed. Could not open input device.\n", stderr);
-		return -1;
-	}
+	DIEIF(g.win.xim == NULL);
 
 	g.win.xic = XCreateIC(g.win.xim, XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
 			XNClientWindow, g.win.window, XNFocusWindow, g.win.window, NULL);
-	if(g.win.xic == NULL) {
-		fputs("XCreateIC failed. Could not obtain input method.\n", stderr);
-		return -1;
-	}
-	return 0;
+	DIEIF(g.win.xic == NULL);
 }
 
-int
+void
 windowing_init()
 {
 	g.win.display = XOpenDisplay(NULL);
-	if(g.win.display == NULL) {
-		fputs("XOpenDisplay failed. Can't open display. Is DISPLAY set?\n", stderr);
-		return -1;
-	}
+	DIEIF(g.win.display == NULL);
 
 	Window parent = XRootWindow(g.win.display, g.win.screen);
 	g.win.screen = XDefaultScreen(g.win.display);
@@ -122,9 +112,7 @@ windowing_init()
 			&(XGCValues){.graphics_exposures = False});
 	XSetForeground(g.win.display, g.win.gfxctx, WhitePixel(g.win.display, g.win.screen));
 
-	if(windowing_init_input_methods()) {
-		return -1;
-	}
+	windowing_init_input_methods();
 
 	XSelectInput(g.win.display, g.win.window, StructureNotifyMask | ExposureMask |
 		KeyPressMask | ButtonMotionMask | ButtonPressMask | ButtonReleaseMask);
@@ -154,7 +142,6 @@ windowing_init()
 	g.win.buf = cairo_create(bufsurf);
 
 	g.win.run = true;
-	return 0;
 }
 
 void
@@ -172,7 +159,7 @@ static dt_file_t file = INIT_ARRAY(file.lines);
 static dt_range_t range = {.file = &file};
 static undobuf_t undobuf;
 static undobuf_t redobuf;
-static bool dirty = false;
+static bool dirty = true;
 
 typedef struct {
 	string_t label;
@@ -878,75 +865,9 @@ resize(XEvent *ev)
 	return true;
 }
 
-int
-main(int argc, char *argv[])
+void
+run()
 {
-	int result = -1;
-
-	setlocale(LC_CTYPE, "");
-
-	dt_file_insert_line(&file, 0, "", 0);
-	if(argc > 1) {
-		int fd = open(argv[1], O_RDONLY);
-		if(fd < 0) {
-			goto close;
-		}
-		dt_range_read(&(dt_range_t){.file = &file}, fd);
-		printf("file lines: %zu\n", file.array.nmemb);
-	close:
-		close(fd);
-	}
-	dirty = true;
-
-	if(windowing_init()) {
-		goto out_win;
-	}
-
-	double ptSize = 15.0;
-
-	FT_Library ftlib;
-	FT_Init_FreeType(&ftlib);
-
-	if(!FcInit()) {
-		fputs("FcInit failed.", stderr);
-		return -1;
-	}
-
-	FcPattern *pattern = FcNameParse((FcChar8*)"DroidSans-10");
-	fontset_t fontset = {0};
-	if(fontset_init(&fontset, pattern)) {
-		FcPatternDestroy(pattern);
-		goto out_fs;
-	}
-	cairo_font_face_t *dt_face = cairo_dt_face_create(&fontset);
-
-	cairo_set_font_face(g.win.buf, dt_face);
-	cairo_font_face_destroy(dt_face);
-	cairo_set_font_size(g.win.buf, ptSize);
-
-	view_resize();
-
-	cairo_save(g.win.buf);
-	double s = 0.625;
-	cairo_matrix_t mat;
-	cairo_get_font_matrix(g.win.buf, &mat);
-	cairo_set_font_size(g.win.buf, mat.xx * s);
-
-	char *labels[] = {"Cut\n", "Copy\n", "Paste\n", "Delete\n", "Find\n", "Open\n",
-			"Exec\n", "+\n", "...\n"};
-	array_resize(&selbar.buttons.array, LEN(labels));
-	for(size_t i = 0; i < selbar.buttons.array.nmemb; i++) {
-		button_t *btn = &selbar.buttons.data[i];
-		btn->label.buf = labels[i];
-		btn->label.array.nmemb = strlen(labels[i]);
-		btn->label.array.amemb = btn->label.array.nmemb;
-		btn->label.array.size = 1;
-		memset(&btn->glyphs, 0, sizeof btn->glyphs);
-
-		text_to_glyphs(&btn->label, &btn->glyphs);
-	}
-	cairo_restore(g.win.buf);
-
 	fd_set rfd;
 	int xfd = XConnectionNumber(g.win.display);
 	struct timespec now, prev;
@@ -959,9 +880,7 @@ main(int argc, char *argv[])
 	while(g.win.run) {
 		FD_ZERO(&rfd);
 		FD_SET(xfd, &rfd);
-		if(pselect(xfd+1, &rfd, NULL, NULL, tv, NULL) < 0 && errno != EINTR) {
-			die("select failed: %s\n", strerror(errno));
-		}
+		DIEIF(pselect(xfd+1, &rfd, NULL, NULL, tv, NULL) < 0 && errno != EINTR);
 
 		while(XPending(g.win.display)) {
 			bool handled = false;
@@ -1014,14 +933,75 @@ main(int argc, char *argv[])
 		clock_gettime(CLOCK_MONOTONIC, &prev);
 		tv = NULL;
 	}
+}
 
-	result = 0;
+void
+file_read(char *fname, dt_file_t *f)
+{
+	int fd = open(fname, O_RDONLY);
+	DIEIF(fd < 0);
 
-out_fs:
+	dt_range_read(&(dt_range_t){.file = f}, fd);
+	close(fd);
+
+	printf("file lines: %zu\n", f->array.nmemb);
+}
+
+int
+main(int argc, char *argv[])
+{
+	setlocale(LC_CTYPE, "");
+	dt_file_insert_line(&file, 0, "", 0);
+
+	if(argc > 1) {
+		file_read(argv[1], &file);
+	}
+
+	windowing_init();
+
+	FT_Library ftlib;
+	FT_Init_FreeType(&ftlib);
+	DIEIF(!FcInit());
+
+	fontset_t fontset = {0};
+	DIEIF( fontset_init(&fontset, FcNameParse((FcChar8*)"DroidSans")) );
+	cairo_font_face_t *dt_face = cairo_dt_face_create(&fontset);
+
+	cairo_set_font_face(g.win.buf, dt_face);
+	cairo_font_face_destroy(dt_face);
+	cairo_set_font_size(g.win.buf, 15.0);
+
+	view_resize();
+
+	cairo_save(g.win.buf);
+	double s = 0.625;
+	cairo_matrix_t mat;
+	cairo_get_font_matrix(g.win.buf, &mat);
+	cairo_set_font_size(g.win.buf, mat.xx * s);
+
+	char labels[] = "Cut\nCopy\nPaste\nDelete\nFind\nOpen\nExec\n+\n...\n";
+	char *lbl = labels;
+	for(char *next; (next = strchr(lbl, '\n')) != NULL; lbl = next) {
+		next++;
+		array_extend(&selbar.buttons.array, 1);
+		button_t *btn = &selbar.buttons.data[selbar.buttons.array.nmemb - 1];
+		btn->label.buf = lbl;
+		btn->label.array.nmemb = next - lbl;
+		btn->label.array.amemb = btn->label.array.nmemb;
+		btn->label.array.size = 1;
+		memset(&btn->glyphs, 0, sizeof btn->glyphs);
+
+		text_to_glyphs(&btn->label, &btn->glyphs);
+		btn->label.buf[btn->label.array.nmemb - 1] = '\0';
+	}
+	cairo_restore(g.win.buf);
+
+	run();
+
 	fontset_free(&fontset);
 	FcFini();
 	FT_Done_FreeType(ftlib);
-out_win:
+
 	windowing_deinit();
 
 	dt_file_free(&file);
@@ -1031,7 +1011,8 @@ out_win:
 		free(g.view.lines[i].glyph_to_offset);
 		free(g.view.lines[i].offset_to_glyph);
 	}
+
 	free(g.view.lines);
 
-	return result;
+	return 0;
 }

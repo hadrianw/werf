@@ -22,8 +22,8 @@ typedef void (*slice_memb_func_t)(void *memb);
 
 void array_free(array_t *a);
 void array_resize(array_t *a, size_t amemb);
-int array_extend(array_t *a, ssize_t nchange);
-int slice_apply(slice_t *slice, slice_memb_func_t func);
-int slice_shift(slice_t *slice, ssize_t shift);
-int slice_resize(slice_t *slice, size_t nmemb);
+void array_extend(array_t *a, ssize_t nchange);
+void slice_apply(slice_t *slice, slice_memb_func_t func);
+void slice_shift(slice_t *slice, ssize_t shift);
+void slice_resize(slice_t *slice, size_t nmemb);
 void *slice_get(slice_t *slice, ssize_t idx);
