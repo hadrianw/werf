@@ -410,7 +410,7 @@ utf8glyph(fontset_t *fset, const char *utf8, size_t utf8_len, FT_Face *face, uns
 	return chsiz;
 }
 
-static cairo_status_t
+cairo_status_t
 dt_face_text_to_glyphs(cairo_scaled_font_t *scaled_font,
 		const char *utf8, int utf8_len,
 		cairo_glyph_t **out_glyphs, int *out_num_glyphs,

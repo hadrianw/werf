@@ -483,14 +483,21 @@ text_to_glyphs(string_t *line, glyphs_t *gl)
 	}
 
 	cairo_scaled_font_t *sc = cairo_get_scaled_font(g.win.buf);
-	cairo_scaled_font_text_to_glyphs(sc, 0, 0, line->buf, line->array.nmemb,
+
+	dt_face_text_to_glyphs(sc, line->buf, line->array.nmemb,
 			&gl->data, &gl->nmemb, NULL, NULL, NULL);
 	if(gl->data != gl_initial) {
 		free(gl_initial);
 	}
 
+	cairo_matrix_t mat;
+	cairo_scaled_font_get_font_matrix(sc, &mat);
+	for(int i = 0; i < gl->nmemb; i++) {
+		gl->data[i].x *= mat.xx;
+	}
+
 	glyph_map(line, gl);
-	
+
 	if(last_line) {
 		line->array.nmemb--;
 	}

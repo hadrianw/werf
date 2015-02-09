@@ -1,4 +1,5 @@
 #include <stdint.h>
+
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
@@ -18,6 +19,12 @@ int fontset_init(fontset_t *f, FcPattern *pattern);
 void fontset_free(fontset_t *f);
 
 cairo_font_face_t *cairo_dt_face_create(fontset_t *fontset);
+
+cairo_status_t dt_face_text_to_glyphs(cairo_scaled_font_t *scaled_font,
+		const char *utf8, int utf8_len,
+		cairo_glyph_t **out_glyphs, int *out_num_glyphs,
+		cairo_text_cluster_t **out_clusters, int *out_num_clusters,
+		cairo_text_cluster_flags_t *cluster_flags);
 
 typedef uint8_t fontidx_t;
 enum {
