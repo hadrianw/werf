@@ -508,17 +508,6 @@ static int scroll_y = 0;
 static int prevx, prevy;
 static bool selecting;
 
-int
-strcmp_nl(char *str1, char *str2)
-{
-	size_t len1 = strchr(str1, '\n') - str1;
-	size_t len2 = strchr(str2, '\n') - str2;
-	if(len1 != len2) {
-		return 1;
-	}
-	return strncmp(str1, str2, MIN(len1, len2));
-}
-
 void
 toolbar_click(toolbar_t *bar, int x)
 {
@@ -528,8 +517,8 @@ toolbar_click(toolbar_t *bar, int x)
 		edge += btn->glyphs.data[btn->glyphs.nmemb - 1].x +
 			g.view.left_margin;
 		if(x < edge) {
-			printf("%.*s", (int)btn->label.array.nmemb, btn->label.buf);
-			if(!strcmp_nl("Delete\n", btn->label.buf)) {
+			puts(btn->label.buf);
+			if(!strcmp("Delete", btn->label.buf)) {
 				range_push_mod(&range, "", 0, OP_Replace);
 				dirty = true;
 			}
