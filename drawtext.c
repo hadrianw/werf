@@ -468,8 +468,10 @@ glyph_map(string_t *line, glyphs_t *gl)
 void
 text_to_glyphs(string_t *line, glyphs_t *gl)
 {
-	gl->nmemb = line->array.nmemb;
-	gl->data = xrealloc(gl->data, gl->nmemb, sizeof gl->data[0]);
+	if(line->array.nmemb > (size_t)gl->nmemb) {
+		gl->nmemb = line->array.nmemb;
+		gl->data = xrealloc(gl->data, gl->nmemb, sizeof gl->data[0]);
+	}
 	cairo_glyph_t *gl_initial = gl->data;
 
 	bool last_line = line->array.nmemb == 0 || line->buf[line->array.nmemb - 1] != '\n';
