@@ -63,11 +63,11 @@ fontset_init(fontset_t *f, FcPattern *pattern)
 	return 0;
 }
 
-static uint16_t
+static fontidx_t
 fontset_match_codepoint(fontset_t *f, FcChar32 codepoint)
 {
 	FcCharSet *chset;
-	int maxlen = MIN(UINT16_MAX, f->set->nfont);
+	int maxlen = MIN(FONTIDX_MAX, f->set->nfont);
 
 	for(int i = 0; i < maxlen; i++) {
 		if( !FcPatternGetCharSet(f->set->fonts[i], FC_CHARSET, 0, &chset) &&
@@ -75,7 +75,7 @@ fontset_match_codepoint(fontset_t *f, FcChar32 codepoint)
 			return i;
 		}
 	}
-	return UINT16_MAX;
+	return FONTIDX_MAX;
 }
 
 void
@@ -113,15 +113,16 @@ dt_face_init(cairo_scaled_font_t *scaled_font,
 	return CAIRO_STATUS_SUCCESS;
 }
 
+#define SPECIAL_WIDTH 1.5
+
 static cairo_status_t
 dt_face_render_glyph(cairo_scaled_font_t *scaled_font,
 		unsigned long glyph, cairo_t *cr,
 		cairo_text_extents_t *extents)
 {
 	fontset_t *fontset;
-	glyphidx_t dt_glyph = {.index = glyph};
 
-	if(dt_glyph.props.font_idx == UINT16_MAX) {
+	if(get_fontidx(glyph) == FONTIDX_MAX) {
 		memset(extents, 0, sizeof extents[0]);
 		return CAIRO_STATUS_SUCCESS;
 	}
@@ -129,37 +130,38 @@ dt_face_render_glyph(cairo_scaled_font_t *scaled_font,
 	fontset = cairo_font_face_get_user_data(
 			cairo_scaled_font_get_font_face(scaled_font), &dt_face_key);
 
-	cairo_set_scaled_font(cr, fontset_get_font(fontset, dt_glyph.props.font_idx));
+	cairo_set_scaled_font(cr, fontset_get_font(fontset, get_fontidx(glyph)));
 
-	cairo_glyph_t cr_glyph = {dt_glyph.props.glyph_idx};
+	cairo_glyph_t cr_glyph = {.index = get_glyphidx(glyph)};
 	cairo_show_glyphs(cr, &cr_glyph, 1);
 	cairo_glyph_extents(cr, &cr_glyph, 1, extents);
 
 	return CAIRO_STATUS_SUCCESS;
 }
 
-static uint16_t
+static uint32_t
 dt_get_char_index(FT_Face face, FT_ULong charcode)
 {
 	FT_UInt idx = FT_Get_Char_Index(face, charcode);
-	if(idx > UINT16_MAX) {
+	if(idx > GLYPHIDX_MAX) {
+		printf("%lu -> %u (> %u)\n", charcode, idx, GLYPHIDX_MAX);
 		return 0;
 	}
 	return idx;
 }
 
 static double
-dt_get_kerning(FT_Face face, glyphidx_t left, glyphidx_t right)
+dt_get_kerning(FT_Face face, unsigned long left, unsigned long right)
 {
-	if(face == NULL || left.props.font_idx == UINT16_MAX ||
-			right.props.font_idx == UINT16_MAX ||
-			left.props.glyph_idx == 0 || right.props.glyph_idx == 0 ||
-			left.props.font_idx != right.props.font_idx) {
+	if(face == NULL || get_fontidx(left) == FONTIDX_MAX ||
+			get_fontidx(right) == FONTIDX_MAX ||
+			get_glyphidx(left) == 0 || get_glyphidx(right) == 0 ||
+			get_fontidx(left) != get_fontidx(right)) {
 		return 0;
 	}
 
 	FT_Vector k;
-	if(FT_Get_Kerning(face, left.props.glyph_idx, right.props.glyph_idx,
+	if(FT_Get_Kerning(face, get_glyphidx(left), get_glyphidx(right),
 			FT_KERNING_UNFITTED, &k)) {
 		return 0;
 	}
@@ -168,42 +170,48 @@ dt_get_kerning(FT_Face face, glyphidx_t left, glyphidx_t right)
 }
 
 static double
-dt_get_advance(FT_Face face, glyphidx_t glyph, double def)
+dt_get_advance(FT_Face face, unsigned long glyph)
 {
-	if(face == NULL || glyph.props.font_idx == UINT16_MAX) {
-		if(glyph.props.glyph_idx == '\n' || glyph.props.glyph_idx == '\t') {
+	if(face == NULL || get_fontidx(glyph) == FONTIDX_MAX) {
+		//if(get_glyphidx(glyph) == '\n' || get_glyphidx(glyph) == '\t') {
+		if(get_glyphidx(glyph) == '\n') {
 			return 0;
 		}
-		return def;
+		return SPECIAL_WIDTH;
 	}
 	FT_Fixed v;
 	FT_Int32 load_flags = FT_LOAD_DEFAULT | FT_LOAD_NO_HINTING;
-	if(FT_Get_Advance(face, glyph.props.glyph_idx, load_flags, &v)) {
+	if(FT_Get_Advance(face, get_glyphidx(glyph), load_flags, &v)) {
 		return 0;
 	}
 	return (double)v / (1<<16);
 }
 
 static size_t
-utf8glyph(fontset_t *fset, const char *utf8, size_t utf8_len, FT_Face *face, glyphidx_t *glyph)
+utf8glyph(fontset_t *fset, const char *utf8, size_t utf8_len, FT_Face *face, unsigned long *glyph)
 {
 	long codepoint;
 	size_t chsiz = utf8decode(utf8, &codepoint, utf8_len);
 	if( codepoint == '\t' || codepoint == '\n' || codepoint == UTF_INVALID ||
-			(chsiz == 1 && !isprint(codepoint)) ) {
-		glyph->props.font_idx = UINT16_MAX;
-		glyph->props.glyph_idx = utf8[0];
+			(chsiz == 1 && !isprint(utf8[0])) ) {
+		*glyph = make_cr_glyph(FONTIDX_MAX, (uchar)utf8[0]);
 		*face = NULL;
 		return 1;
 	}
 
-	glyph->props.font_idx = fontset_match_codepoint(fset, codepoint);
-	if(glyph->props.font_idx == UINT16_MAX) {
-		glyph->props.font_idx = 0;
+	fontidx_t fontidx = fontset_match_codepoint(fset, codepoint);
+	if(fontidx == FONTIDX_MAX) {
+		*glyph = make_cr_glyph(FONTIDX_MAX, codepoint | CODEPOINT_NOT_FOUND);
+		*face = NULL;
+		return chsiz;
 	}
 
-	*face = cairo_ft_scaled_font_lock_face(fontset_get_font(fset, glyph->props.font_idx));
-	glyph->props.glyph_idx = dt_get_char_index(*face, codepoint);
+	*face = cairo_ft_scaled_font_lock_face(fontset_get_font(fset, fontidx));
+	uint32_t glyphidx = dt_get_char_index(*face, codepoint);
+	if(glyphidx == 0) {
+		printf("0: %lu @ %u\n", codepoint, fontidx);
+	}
+	*glyph = make_cr_glyph(fontidx, glyphidx);
 	return chsiz;
 }
 
@@ -223,9 +231,8 @@ dt_face_text_to_glyphs(cairo_scaled_font_t *scaled_font,
 	cairo_glyph_t *glyphs = *out_glyphs;
 	int max_num_glyphs = *out_num_glyphs;
 
-	cairo_glyph_t cr_glyph = {0};
-	glyphidx_t glyph = {0};
-	glyphidx_t prev_glyph;
+	cairo_glyph_t glyph = {0};
+	unsigned long prev_glyph_idx;
 
 	FT_Face face;
 
@@ -237,16 +244,16 @@ dt_face_text_to_glyphs(cairo_scaled_font_t *scaled_font,
 			glyphs = aglyphs;
 		}
 
-		prev_glyph = glyph;
-		chsiz = utf8glyph(fset, utf8+off, utf8_len-off, &face, &glyph);
+		prev_glyph_idx = glyph.index;
+		chsiz = utf8glyph(fset, utf8+off, utf8_len-off, &face, &glyph.index);
 
-		cr_glyph.x += dt_get_kerning(face, prev_glyph, glyph);
-		cr_glyph.index = glyph.index;
-		glyphs[i] = cr_glyph;
-		cr_glyph.x += dt_get_advance(face, glyph, 0.5);
+		glyph.x += dt_get_kerning(face, prev_glyph_idx, glyph.index);
+		glyphs[i] = glyph;
+		glyph.x += dt_get_advance(face, glyph.index);
 
 		if(face != NULL) {
-			cairo_ft_scaled_font_unlock_face(fontset_get_font(fset, glyph.props.font_idx));
+			cairo_ft_scaled_font_unlock_face( fontset_get_font(
+					fset, get_fontidx(glyph.index)) );
 		}
 	}
 
