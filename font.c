@@ -113,7 +113,164 @@ dt_face_init(cairo_scaled_font_t *scaled_font,
 	return CAIRO_STATUS_SUCCESS;
 }
 
+/*
+0-1-2
+|X|X|
+3-4-5
+|X|X|
+6-7-8
+*/
+
+static struct { double x, y; } idx_to_coords[] = {
+	[0] = {.0, -1.},
+	[1] = {.5, -1.},
+	[2] = {1., -1.},
+	[3] = {.0, -.5},
+	[4] = {.5, -.5},
+	[5] = {1., -.5},
+	[6] = {.0, -.0},
+	[7] = {.5, -.0},
+	[8] = {1., -.0},
+};
+
+enum { SEP = LEN(idx_to_coords), STP };
+
+static uchar ch0[] = {0, 2, 8, 6, 0, SEP, 2, 6, STP};
+static uchar ch1[] = {4, 2, 8, STP};
+static uchar ch2[] = {0, 2, 5, 3, 6, 8, STP};
+static uchar ch3[] = {0, 2, 8, 6, SEP, 3, 5, STP};
+static uchar ch4[] = {0, 3, 5, SEP, 2, 8, STP};
+static uchar ch5[] = {2, 0, 3, 5, 8, 6, STP};
+static uchar ch6[] = {2, 0, 6, 8, 5, 3, STP};
+static uchar ch7[] = {0, 2, 4, 7, STP};
+static uchar ch8[] = {0, 2, 8, 6, 0, SEP, 3, 5, STP};
+static uchar ch9[] = {6, 8, 2, 0, 3, 5, STP};
+static uchar chA[] = {6, 3, 1, 5, 8, SEP, 3, 5, STP};
+static uchar chB[] = {0, 2, 8, 6, SEP, 1, 7, SEP, 4, 5, STP};
+static uchar chC[] = {2, 0, 6, 8, STP};
+static uchar chD[] = {0, 2, 8, 6, SEP, 1, 7, STP};
+static uchar chE[] = {2, 0, 6, 8, SEP, 3, 5, STP};
+static uchar chF[] = {2, 0, 6, SEP, 3, 5, STP};
+static uchar chG[] = {2, 0, 6, 8, 5, 4, STP};
+static uchar chH[] = {0, 6, SEP, 2, 8, SEP, 3, 5, STP};
+static uchar chI[] = {0, 2, SEP, 6, 8, SEP, 1, 7, STP};
+static uchar chJ[] = {2, 8, 6, 3, STP};
+static uchar chK[] = {0, 6, SEP, 2, 3, 8, STP};
+static uchar chL[] = {0, 6, 8, STP};
+static uchar chM[] = {6, 0, 4, 2, 8, STP};
+static uchar chN[] = {6, 0, 8, 2, STP};
+static uchar chO[] = {0, 2, 8, 6, 0, STP};
+static uchar chP[] = {6, 0, 2, 5, 3, STP};
+static uchar chQ[] = {8, 6, 0, 2, 8, 4, STP};
+static uchar chR[] = {6, 0, 2, 5, 3, 8, STP};
+static uchar chS[] = {2, 1, 3, 5, 8, 6, STP};
+static uchar chT[] = {0, 2, SEP, 1, 7, STP};
+static uchar chU[] = {0, 6, 8, 2, STP};
+static uchar chV[] = {0, 7, 2, STP};
+static uchar chW[] = {0, 6, 4, 8, 2, STP};
+static uchar chX[] = {0, 8, SEP, 2, 6, STP};
+static uchar chY[] = {0, 4, 7, SEP, 2, 4, STP};
+static uchar chZ[] = {0, 2, 6, 8, STP};
+
+uchar *ch_to_idx[] = {
+	['0' - 0x30] = ch0,
+	['1' - 0x30] = ch1,
+	['2' - 0x30] = ch2,
+	['3' - 0x30] = ch3,
+	['4' - 0x30] = ch4,
+	['5' - 0x30] = ch5,
+	['6' - 0x30] = ch6,
+	['7' - 0x30] = ch7,
+	['8' - 0x30] = ch8,
+	['9' - 0x30] = ch9,
+	['A' - 0x30] = chA,
+	['B' - 0x30] = chB,
+	['C' - 0x30] = chC,
+	['D' - 0x30] = chD,
+	['E' - 0x30] = chE,
+	['F' - 0x30] = chF,
+	['G' - 0x30] = chG,
+	['H' - 0x30] = chH,
+	['I' - 0x30] = chI,
+	['J' - 0x30] = chJ,
+	['K' - 0x30] = chK,
+	['L' - 0x30] = chL,
+	['M' - 0x30] = chM,
+	['N' - 0x30] = chN,
+	['O' - 0x30] = chO,
+	['P' - 0x30] = chP,
+	['Q' - 0x30] = chQ,
+	['R' - 0x30] = chR,
+	['S' - 0x30] = chS,
+	['T' - 0x30] = chT,
+	['U' - 0x30] = chU,
+	['V' - 0x30] = chV,
+	['W' - 0x30] = chW,
+	['X' - 0x30] = chX,
+	['Y' - 0x30] = chY,
+	['Z' - 0x30] = chZ
+};
+
+static struct {
+	uchar id[3];
+} ctrl_to_id[] = {
+	[0x00] = {{'N', 'U', 'L'}},
+	[0x01] = {{'S', 'O', 'H'}},
+	[0x02] = {{'S', 'T', 'X'}},
+	[0x03] = {{'E', 'T', 'X'}},
+	[0x04] = {{'E', 'O', 'T'}},
+	[0x05] = {{'E', 'N', 'Q'}},
+	[0x06] = {{'A', 'C', 'K'}},
+	[0x07] = {{'B', 'E', 'L'}},
+	[0x08] = {{'B', 'S'}},
+	[0x09] = {{'H', 'T'}},
+	[0x0A] = {{'L', 'F'}},
+	[0x0B] = {{'V', 'T'}},
+	[0x0C] = {{'F', 'F'}},
+	[0x0D] = {{'C', 'R'}},
+	[0x0E] = {{'S', 'O'}},
+	[0x0F] = {{'S', 'I'}},
+	[0x10] = {{'D', 'L', 'E'}},
+	[0x11] = {{'D', 'C', '1'}},
+	[0x12] = {{'D', 'C', '2'}},
+	[0x13] = {{'D', 'C', '3'}},
+	[0x14] = {{'D', 'C', '4'}},
+	[0x15] = {{'N', 'A', 'K'}},
+	[0x16] = {{'S', 'Y', 'N'}},
+	[0x17] = {{'E', 'T', 'B'}},
+	[0x18] = {{'C', 'A', 'N'}},
+	[0x19] = {{'E', 'M'}},
+	[0x1A] = {{'S', 'U', 'B'}},
+	[0x1B] = {{'E', 'S', 'C'}},
+	[0x1C] = {{'F', 'S'}},
+	[0x1D] = {{'G', 'S'}},
+	[0x1E] = {{'R', 'S'}},
+	[0x1F] = {{'U', 'S'}},
+};
+
 #define SPECIAL_WIDTH 1.5
+
+void
+basic_text(cairo_t *cr, const uchar *str, size_t len, double x, double adv, double chw, double chh)
+{
+	for(size_t i = 0; i < len; i++) {
+		uchar *chidx = ch_to_idx[str[i] - 0x30];
+		DIEIF(chidx == NULL);
+		void (*cr_line)(cairo_t*, double, double) = cairo_move_to;
+		for(uchar j = 0; chidx[j] != STP; j++) {
+			if(chidx[j] == SEP) {
+				cr_line = cairo_move_to;
+				continue;
+			}
+
+			double crdx = idx_to_coords[chidx[j]].x * chw;
+			double crdy = idx_to_coords[chidx[j]].y * chh;
+			cr_line(cr, x + crdx, crdy);
+			cr_line = cairo_line_to;
+		}
+		x += adv;
+	}
+}
 
 static cairo_status_t
 dt_face_render_glyph(cairo_scaled_font_t *scaled_font,
@@ -124,6 +281,44 @@ dt_face_render_glyph(cairo_scaled_font_t *scaled_font,
 
 	if(get_fontidx(glyph) == FONTIDX_MAX) {
 		memset(extents, 0, sizeof extents[0]);
+		uint32_t codepoint = get_glyphidx(glyph);
+		if(codepoint == '\n' || codepoint == '\t') {
+			return CAIRO_STATUS_SUCCESS;
+		}
+		uchar *id;
+		uchar len = 0;
+		enum { BYTE_LEN = 2, CODEPOINT_LEN = 6 };
+		uchar buf[MAX(BYTE_LEN, CODEPOINT_LEN) + 1];
+		if(codepoint < LEN(ctrl_to_id)) {
+			id = ctrl_to_id[codepoint].id;
+			while(id[len] && len < LEN(ctrl_to_id[0].id)) {
+				len++;
+			}
+		} else if(codepoint < 256) {
+			id = buf;
+			len = BYTE_LEN;
+			sprintf((char*)id, "%0*X", (int)len, codepoint);
+		} else if(codepoint & CODEPOINT_NOT_FOUND) {
+			codepoint ^= CODEPOINT_NOT_FOUND;
+			id = buf;
+			len = snprintf((char*)id, CODEPOINT_LEN+1, "%X", codepoint);
+		} else {
+			return CAIRO_STATUS_USER_FONT_ERROR;
+		}
+
+		double adv = SPECIAL_WIDTH / len * 0.875;
+		double chw = adv * 0.6875;
+		double chh = 0.6875;
+
+		double x = ( SPECIAL_WIDTH - (len*adv - (adv-chw)) ) * 0.5;
+
+		basic_text(cr, id, len, x, adv, chw, chh);
+
+		cairo_set_line_join(cr, CAIRO_LINE_JOIN_BEVEL);
+		cairo_matrix_t mat;
+		cairo_scaled_font_get_font_matrix(scaled_font, &mat);
+		cairo_set_line_width(cr, 1 / mat.xx);
+		cairo_stroke(cr);
 		return CAIRO_STATUS_SUCCESS;
 	}
 
