@@ -104,7 +104,7 @@ dt_range_mod_line(dt_range_t *rng, char *mod_line, size_t mod_len)
 	slice_resize(&(slice_t){&line->array, rng->start.offset, end_offset}, mod_len);
 	memcpy(line->buf + rng->start.offset, mod_line, mod_len);
 
-	if(insert_new_line) {
+	if(mod_len > 0 && mod_line[mod_len - 1] == '\n') {
 		rng->start.line++;
 		rng->start.offset = 0;
 		dt_range_fix_end(rng);
