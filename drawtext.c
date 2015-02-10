@@ -515,6 +515,219 @@ static int scroll_y = 0;
 static int prevx, prevy;
 static bool selecting;
 
+enum {
+	P2CH_SEL,
+	NUM_P2CH
+};
+
+char *p2ch_names[NUM_P2CH] = {
+	[P2CH_SEL] = 0
+};
+
+enum {
+	CH2P_SEL,
+	CH2P_CTL,
+	NUM_CH2P
+};
+
+char *ch2p_names[NUM_CH2P] = {
+	[CH2P_SEL] = 0,
+	[CH2P_CTL] = "werf_control_W"
+};
+
+void
+spawn_command(char *cmd)
+{
+	puts(cmd);
+	if(!strcmp("Delete", cmd)) {
+		range_push_mod(&range, "", 0, OP_Replace);
+		dirty = true;
+		return;
+	}
+
+	int parent_to_child[NUM_P2CH][2];
+	int child_to_parent[NUM_CH2P][2];
+
+	for(size_t i = 0; i < LEN(parent_to_child); i++) {
+		DIEIF(pipe(parent_to_child[i]) == -1);
+	}
+	for(size_t i = 0; i < LEN(child_to_parent); i++) {
+		DIEIF(pipe(child_to_parent[i]) == -1);
+	}
+
+	pid_t pid = fork();
+	DIEIF(pid < 0);
+
+	if(pid == 0) {
+		for(size_t i = 0; i < LEN(parent_to_child); i++) {
+			close(parent_to_child[i][1]);
+		}
+		for(size_t i = 0; i < LEN(child_to_parent); i++) {
+			close(child_to_parent[i][0]);
+		}
+
+		dup2(parent_to_child[P2CH_SEL][0], STDIN_FILENO);
+		dup2(child_to_parent[CH2P_SEL][1], STDOUT_FILENO);
+
+		// TODO: env[TERM] = dumb
+
+		for(size_t i = 0; i < LEN(parent_to_child); i++) {
+			// TODO: env[name] = /dev/fd/NUM
+		}
+		for(size_t i = 0; i < LEN(child_to_parent); i++) {
+			// TODO: env[name] = /dev/fd/NUM
+		}
+
+		char *args[] = {"sh", "-c", cmd, (char*)0};
+		execvp(args[0], args);
+		die("execvp failed %s\n", strerror(errno));
+	}
+
+	for(size_t i = 0; i < LEN(parent_to_child); i++) {
+		close(parent_to_child[i][0]);
+		fcntl(parent_to_child[i][1], F_SETFL, O_NONBLOCK);
+	}
+	for(size_t i = 0; i < LEN(child_to_parent); i++) {
+		close(child_to_parent[i][1]);
+		fcntl(child_to_parent[i][0], F_SETFL, O_NONBLOCK);
+	}
+
+	fd_set wfd;
+	fd_set rfd;
+	int max;
+
+	enum { PIPE_BUF_SIZE = BUFSIZ * 2 };
+
+	struct {
+		char buf[PIPE_BUF_SIZE];
+		size_t buf_len;
+		size_t write_len;
+		dt_range_t rng;
+	} sel_write;
+	sel_write.buf_len = 0;
+	sel_write.write_len = 0;
+	sel_write.rng = range;
+
+	string_t sel_read = INIT_ARRAY(sel_read.buf);
+	bool disregard = false;
+
+	for(;;) {
+		FD_ZERO(&wfd);
+		FD_ZERO(&rfd);
+		max = -1;
+		for(size_t i = 0; i < LEN(parent_to_child); i++) {
+			if(parent_to_child[i][1] >= 0) {
+				FD_SET(parent_to_child[i][1], &wfd);
+				max = MAX(max, parent_to_child[i][1]);
+			}
+		}
+		for(size_t i = 0; i < LEN(child_to_parent); i++) {
+			if(child_to_parent[i][0] >= 0) {
+				FD_SET(child_to_parent[i][0], &rfd);
+				max = MAX(max, child_to_parent[i][0]);
+			}
+		}
+		if(max < 0) {
+			pid = 0;
+			break;
+		}
+
+		DIEIF(pselect(max+1, &rfd, &wfd, NULL, NULL, NULL) < 0 && errno != EINTR);
+		if(errno == EINTR) {
+			continue;
+		}
+
+		if(child_to_parent[CH2P_CTL][0] >= 0 &&
+				FD_ISSET(child_to_parent[CH2P_CTL][0], &rfd)) {
+			struct { char data[BUFSIZ]; char null; } buf;
+			ssize_t len = read(child_to_parent[CH2P_CTL][0], buf.data, sizeof buf.data);
+			if(len >= 0) {
+				buf.data[len] = 0;
+				if(!strcmp(buf.data, "disregard\n")) {
+					disregard = true;
+					close(child_to_parent[CH2P_SEL][0]);
+					child_to_parent[CH2P_SEL][0] = -1;
+					array_free(&sel_read.array);
+				} else if(len > 0) {
+					fputs("unknown ctl command\n", stderr);
+					len = 0;
+				}
+				if(len == 0) {
+					close(child_to_parent[CH2P_CTL][0]);
+					child_to_parent[CH2P_CTL][0] = -1;
+				}
+			}
+		} else if(parent_to_child[P2CH_SEL][1] >= 0 &&
+				FD_ISSET(parent_to_child[P2CH_SEL][1], &wfd)) {
+			memshift(-sel_write.write_len, sel_write.buf, sel_write.buf_len,
+					sizeof sel_write.buf[0]);
+			sel_write.buf_len -= sel_write.write_len;
+
+			sel_write.buf_len += dt_range_copy(&sel_write.rng,
+					sel_write.buf + sel_write.buf_len,
+					sizeof sel_write.buf - sel_write.buf_len);
+			if(sel_write.buf_len > 0) {
+				ssize_t len = write(parent_to_child[P2CH_SEL][1],
+						sel_write.buf, sel_write.buf_len);
+				if(len < 0 && errno == EPIPE) {
+					len = 0;
+					sel_write.buf_len = 0;
+					sel_write.rng.start = sel_write.rng.end;
+				}
+				if(len >= 0) {
+					sel_write.write_len = len;
+				} else {
+					perror("write failed");
+					sel_write.write_len = 0;
+				}
+			} else {
+				sel_write.write_len = 0;
+			}
+
+			if(sel_write.write_len == sel_write.buf_len &&
+					!dt_address_cmp(&sel_write.rng.start, &sel_write.rng.end)) {
+				close(parent_to_child[P2CH_SEL][1]);
+				parent_to_child[P2CH_SEL][1] = -1;
+			}
+		} else if(child_to_parent[CH2P_SEL][0] >= 0 &&
+				FD_ISSET(child_to_parent[CH2P_SEL][0], &rfd)) {
+			size_t start = sel_read.array.nmemb;
+			array_extend(&sel_read.array, PIPE_BUF_SIZE);
+
+			ssize_t len = read(child_to_parent[CH2P_SEL][0],
+					sel_read.buf + start, PIPE_BUF_SIZE);
+			if(len < 0 && errno == EPIPE) {
+				len = 0;
+			}
+			if(len >= 0) {
+				sel_read.array.nmemb = start + len;
+				if(len == 0) {
+					close(child_to_parent[CH2P_SEL][0]);
+					child_to_parent[CH2P_SEL][0] = -1;
+				}
+			} else {
+				perror("read failed");
+			}
+		}
+	}
+
+	for(size_t i = 0; i < LEN(parent_to_child); i++) {
+		if(parent_to_child[i][1] >= 0) {
+			close(parent_to_child[i][1]);
+		}
+	}
+	for(size_t i = 0; i < LEN(child_to_parent); i++) {
+		if(child_to_parent[i][0] >= 0) {
+			close(child_to_parent[i][0]);
+		}
+	}
+
+	if(!disregard) {
+		range_push_mod(&range, sel_read.buf, sel_read.array.nmemb, OP_Replace);
+		array_free(&sel_read.array);
+	}
+}
+
 void
 toolbar_click(toolbar_t *bar, int x)
 {
@@ -524,11 +737,7 @@ toolbar_click(toolbar_t *bar, int x)
 		edge += btn->glyphs.data[btn->glyphs.nmemb - 1].x +
 			g.view.left_margin;
 		if(x < edge) {
-			puts(btn->label.buf);
-			if(!strcmp("Delete", btn->label.buf)) {
-				range_push_mod(&range, "", 0, OP_Replace);
-				dirty = true;
-			}
+			spawn_command(btn->label.buf);
 			break;
 		}
 		edge += g.view.left_margin;
@@ -951,6 +1160,7 @@ int
 main(int argc, char *argv[])
 {
 	setlocale(LC_CTYPE, "");
+	signal(SIGPIPE, SIG_IGN);
 	dt_file_insert_line(&file, 0, "", 0);
 
 	if(argc > 1) {
