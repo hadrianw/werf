@@ -22,6 +22,7 @@ void dt_range_fix_start(dt_range_t *rng);
 void dt_range_fix_end(dt_range_t *rng);
 void dt_range_mod(dt_range_t *rng, char *mod_line, size_t mod_len);
 int dt_range_read(dt_range_t *rng, int fd);
+size_t dt_range_copy(dt_range_t *rng, char *buf, size_t bufsiz);
 
 typedef struct undo_t undo_t;
 struct undo_t {

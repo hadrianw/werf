@@ -173,6 +173,39 @@ dt_range_read(dt_range_t *rng, int fd)
 	return 0;
 }
 
+size_t
+dt_range_copy(dt_range_t *rng, char *buf, size_t bufsiz)
+{
+	if(!bufsiz) {
+		return 0;
+	}
+
+	size_t off = rng->start.offset;
+	size_t siz;
+	size_t len = 0;
+
+	rng->start.offset = rng->end.offset;
+
+	do {
+		string_t *line = &rng->file->lines[rng->start.line];
+		if(rng->start.line == rng->end.line) {
+			siz = rng->end.offset - off;
+		} else {
+			siz = line->array.nmemb - off;
+		}
+		if(len + siz > bufsiz) {
+			siz = bufsiz - len;
+			rng->start.offset = off + siz;
+		} else if(rng->start.line != rng->end.line) {
+			rng->start.line++;
+		}
+		memcpy(buf + len, line->buf + off, siz);
+		len += siz;
+		off = 0;
+	} while(len < bufsiz && rng->start.line < rng->end.line);
+	return len;
+}
+
 static void
 undobuf_extend(undobuf_t *u, size_t ext)
 {
