@@ -1,6 +1,6 @@
 OPTIM = -g -O0
 #OPTIM = -O2
-CFLAGS = -std=c99 $(OPTIM) -Wall -Wextra -pedantic -Werror \
+CFLAGS = -std=c1x $(OPTIM) -Wall -Wextra -pedantic -Werror \
 	-Wno-missing-field-initializers \
 	`freetype-config --cflags` \
 	-D_POSIX_C_SOURCE=200809L
