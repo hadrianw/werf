@@ -520,24 +520,32 @@ static bool selecting;
 int
 control_recv(void *usr, string_t *buf, size_t *len)
 {
-	(void)len;
-	bool *disregard = usr;
-
-	size_t start = buf->nmemb - *len;
-	char *delim = memchr(buf->data + start, '\n', *len);
-	if(!delim) {
-		return 0;
-	}
-
-	size_t linelen = delim - buf->data;
-
 	static const char disregard_str[] = "disregard";
 
-	if( !strncmp(buf->data, disregard_str, MIN(linelen, sizeof disregard_str - 1)) ) {
-		*disregard = true;
-	} else {
-		fputs("unknown ctl command\n", stderr);
+	bool *disregard = usr;
+
+	size_t shift = 0;
+
+	char *delim;
+	char *scan_start = buf->data + buf->nmemb - *len;
+	char *line_start = buf->data;
+	while( (delim = memchr(scan_start, '\n', *len)) ) {
+		size_t line_len = delim - line_start;
+
+		if( !strncmp(line_start, disregard_str, MIN(line_len, sizeof disregard_str - 1)) ) {
+			puts("olo");
+			*disregard = true;
+		} else {
+			fputs("unknown ctl command\n", stderr);
+		}
+
+		scan_start = delim + 1;
+		line_start = scan_start;
+
+		shift += line_len + 1;
 	}
+	ARR_FRAG_SHIFT(buf, 0, buf->nmemb, -shift);
+	ARR_SHRINK(buf, shift);
 	return 0;
 }
 
