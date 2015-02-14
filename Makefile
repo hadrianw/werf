@@ -12,6 +12,7 @@ VALGRIND = valgrind --leak-check=full --suppressions=valgrind.supp
 
 SRC = \
 	drawtext.c \
+	pipe.c \
 	edit.c \
 	font.c \
 	utf.c \
@@ -29,7 +30,8 @@ $(OBJ): util.h Makefile
 utf.o: utf.h
 font.o: font.h utf.h
 edit.o: edit.h utf.h array.h
-drawtext.o: edit.h font.h array.h
+pipe.c: pipe.h array.h
+drawtext.o: pipe.h edit.h font.h array.h
 
 drawtext: $(OBJ)
 	@echo CC -o $@

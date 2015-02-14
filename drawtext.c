@@ -23,6 +23,7 @@
 #include "utf.h"
 #include "font.h"
 #include "edit.h"
+#include "pipe.h"
 
 typedef struct {
 	int width;
@@ -515,217 +516,151 @@ static int scroll_y = 0;
 static int prevx, prevy;
 static bool selecting;
 
-enum {
-	P2CH_SEL,
-	NUM_P2CH
+int
+control_recv(void *usr, string_t *buf, size_t *len)
+{
+	(void)len;
+	bool *disregard = usr;
+
+	size_t start = buf->nmemb - *len;
+	char *delim = memchr(buf->data + start, '\n', *len);
+	if(!delim) {
+		return 0;
+	}
+
+	size_t linelen = delim - buf->data;
+
+	static const char disregard_str[] = "disregard";
+
+	if( !strncmp(buf->data, disregard_str, MIN(linelen, sizeof disregard_str - 1)) ) {
+		*disregard = true;
+	} else {
+		fputs("unknown ctl command\n", stderr);
+	}
+	return 0;
+}
+
+int
+selection_send(void *usr, string_t *buf, size_t *len)
+{
+	(void)len;
+	dt_range_t *rng = usr;
+	buf->nmemb += dt_range_copy(rng, buf->data + buf->nmemb, buf->amemb - buf->nmemb);
+	return 0;
+}
+
+#define INDEXOF(st, m) (offsetof(st, m) / sizeof(((st *)0)->m))
+
+typedef union {
+	struct {
+		int sel;
+		int ctl;
+	};
+	int array[1];
+} read_fd_t;
+read_fd_t read_fd;
+enum { NUM_READ_FD = sizeof read_fd / sizeof read_fd.array[0] };
+
+static pipedesc_t read_child_end[NUM_READ_FD] = {
+	[INDEXOF(read_fd_t, ctl)] = {.name = "werf_control_W"}
 };
 
-char *p2ch_names[NUM_P2CH] = {
-	[P2CH_SEL] = 0
+static struct {
+	bool disregard;
+} control_recv_work;
+
+static union {
+	struct {
+		pipework_t sel;
+		pipework_t ctl;
+	};
+	pipework_t array[1];
+} read_work = {
+	.ctl = {
+		.handler = control_recv,
+		.usr = &control_recv_work.disregard
+	}
 };
 
-enum {
-	CH2P_SEL,
-	CH2P_CTL,
-	NUM_CH2P
-};
+typedef union {
+	struct {
+		int sel;
+	};
+	int array[1];
+} write_fd_t;
+static write_fd_t write_fd;
+enum { NUM_WRITE_FD = sizeof write_fd / sizeof write_fd.array[0] };
 
-char *ch2p_names[NUM_CH2P] = {
-	[CH2P_SEL] = 0,
-	[CH2P_CTL] = "werf_control_W"
+static pipedesc_t write_child_end[NUM_WRITE_FD];
+
+static struct {
+	char buf[BUFSIZ * 2];
+	dt_range_t rng;
+} selection_send_work;
+
+static union {
+	struct {
+		pipework_t sel;
+	};
+	pipework_t array[1];
+} write_work = {
+	.sel = {
+		.handler = selection_send,
+		.usr = &selection_send_work.rng,
+		.buf = {
+			.data = selection_send_work.buf,
+			.amemb = sizeof selection_send_work.buf
+		}
+	}
 };
 
 void
-spawn_command(char *cmd)
+handle_command(char *cmd)
 {
-	puts(cmd);
 	if(!strcmp("Delete", cmd)) {
 		range_push_mod(&range, "", 0, OP_Replace);
 		dirty = true;
 		return;
 	}
 
-	int parent_to_child[NUM_P2CH][2];
-	int child_to_parent[NUM_CH2P][2];
-
-	for(size_t i = 0; i < LEN(parent_to_child); i++) {
-		DIEIF(pipe(parent_to_child[i]) == -1);
-	}
-	for(size_t i = 0; i < LEN(child_to_parent); i++) {
-		DIEIF(pipe(child_to_parent[i]) == -1);
+	char *argv[] = {"sh", "-c", cmd, (char*)0};
+	pid_t pid = pipe_spawn(argv, read_fd.array, read_child_end, NUM_READ_FD,
+		write_fd.array, write_child_end, NUM_WRITE_FD);
+	if(pid < 0) {
+		fprintf(stderr, "couldn't spawn command: %s\n", strerror(-pid));
+		return;
 	}
 
-	pid_t pid = fork();
-	DIEIF(pid < 0);
-
-	if(pid == 0) {
-		for(size_t i = 0; i < LEN(parent_to_child); i++) {
-			close(parent_to_child[i][1]);
-		}
-		for(size_t i = 0; i < LEN(child_to_parent); i++) {
-			close(child_to_parent[i][0]);
-		}
-
-		dup2(parent_to_child[P2CH_SEL][0], STDIN_FILENO);
-		dup2(child_to_parent[CH2P_SEL][1], STDOUT_FILENO);
-
-		// TODO: env[TERM] = dumb
-
-		for(size_t i = 0; i < LEN(parent_to_child); i++) {
-			// TODO: env[name] = /dev/fd/NUM
-		}
-		for(size_t i = 0; i < LEN(child_to_parent); i++) {
-			// TODO: env[name] = /dev/fd/NUM
-		}
-
-		char *args[] = {"sh", "-c", cmd, (char*)0};
-		execvp(args[0], args);
-		die("execvp failed %s\n", strerror(errno));
+	for(size_t i = 0; i < NUM_WRITE_FD; i++) {
+		fcntl(write_fd.array[i], F_SETFL, O_NONBLOCK);
+	}
+	for(size_t i = 0; i < NUM_READ_FD; i++) {
+		fcntl(read_fd.array[i], F_SETFL, O_NONBLOCK);
 	}
 
-	for(size_t i = 0; i < LEN(parent_to_child); i++) {
-		close(parent_to_child[i][0]);
-		fcntl(parent_to_child[i][1], F_SETFL, O_NONBLOCK);
+	selection_send_work.rng = range;
+
+	pipe_loop(read_fd.array, read_work.array, NUM_READ_FD,
+			write_fd.array, write_work.array, NUM_WRITE_FD);
+
+	for(size_t i = 0; i < NUM_WRITE_FD; i++) {
+		if(write_fd.array[i] >= 0) {
+			close(write_fd.array[i]);
+		}
 	}
-	for(size_t i = 0; i < LEN(child_to_parent); i++) {
-		close(child_to_parent[i][1]);
-		fcntl(child_to_parent[i][0], F_SETFL, O_NONBLOCK);
-	}
-
-	fd_set wfd;
-	fd_set rfd;
-	int max;
-
-	enum { PIPE_BUF_SIZE = BUFSIZ * 2 };
-
-	struct {
-		char buf[PIPE_BUF_SIZE];
-		size_t buf_len;
-		size_t write_len;
-		dt_range_t rng;
-	} sel_write;
-	sel_write.buf_len = 0;
-	sel_write.write_len = 0;
-	sel_write.rng = range;
-
-	string_t sel_read = INIT_ARRAY(sel_read.buf);
-	bool disregard = false;
-
-	for(;;) {
-		FD_ZERO(&wfd);
-		FD_ZERO(&rfd);
-		max = -1;
-		for(size_t i = 0; i < LEN(parent_to_child); i++) {
-			if(parent_to_child[i][1] >= 0) {
-				FD_SET(parent_to_child[i][1], &wfd);
-				max = MAX(max, parent_to_child[i][1]);
-			}
-		}
-		for(size_t i = 0; i < LEN(child_to_parent); i++) {
-			if(child_to_parent[i][0] >= 0) {
-				FD_SET(child_to_parent[i][0], &rfd);
-				max = MAX(max, child_to_parent[i][0]);
-			}
-		}
-		if(max < 0) {
-			pid = 0;
-			break;
-		}
-
-		DIEIF(pselect(max+1, &rfd, &wfd, NULL, NULL, NULL) < 0 && errno != EINTR);
-		if(errno == EINTR) {
-			continue;
-		}
-
-		if(child_to_parent[CH2P_CTL][0] >= 0 &&
-				FD_ISSET(child_to_parent[CH2P_CTL][0], &rfd)) {
-			struct { char data[BUFSIZ]; char null; } buf;
-			ssize_t len = read(child_to_parent[CH2P_CTL][0], buf.data, sizeof buf.data);
-			if(len >= 0) {
-				buf.data[len] = 0;
-				if(!strcmp(buf.data, "disregard\n")) {
-					disregard = true;
-					close(child_to_parent[CH2P_SEL][0]);
-					child_to_parent[CH2P_SEL][0] = -1;
-					array_free(&sel_read.array);
-				} else if(len > 0) {
-					fputs("unknown ctl command\n", stderr);
-					len = 0;
-				}
-				if(len == 0) {
-					close(child_to_parent[CH2P_CTL][0]);
-					child_to_parent[CH2P_CTL][0] = -1;
-				}
-			}
-		} else if(parent_to_child[P2CH_SEL][1] >= 0 &&
-				FD_ISSET(parent_to_child[P2CH_SEL][1], &wfd)) {
-			memshift(-sel_write.write_len, sel_write.buf, sel_write.buf_len,
-					sizeof sel_write.buf[0]);
-			sel_write.buf_len -= sel_write.write_len;
-
-			sel_write.buf_len += dt_range_copy(&sel_write.rng,
-					sel_write.buf + sel_write.buf_len,
-					sizeof sel_write.buf - sel_write.buf_len);
-			if(sel_write.buf_len > 0) {
-				ssize_t len = write(parent_to_child[P2CH_SEL][1],
-						sel_write.buf, sel_write.buf_len);
-				if(len < 0 && errno == EPIPE) {
-					len = 0;
-					sel_write.buf_len = 0;
-					sel_write.rng.start = sel_write.rng.end;
-				}
-				if(len >= 0) {
-					sel_write.write_len = len;
-				} else {
-					perror("write failed");
-					sel_write.write_len = 0;
-				}
-			} else {
-				sel_write.write_len = 0;
-			}
-
-			if(sel_write.write_len == sel_write.buf_len &&
-					!dt_address_cmp(&sel_write.rng.start, &sel_write.rng.end)) {
-				close(parent_to_child[P2CH_SEL][1]);
-				parent_to_child[P2CH_SEL][1] = -1;
-			}
-		} else if(child_to_parent[CH2P_SEL][0] >= 0 &&
-				FD_ISSET(child_to_parent[CH2P_SEL][0], &rfd)) {
-			size_t start = sel_read.array.nmemb;
-			array_extend(&sel_read.array, PIPE_BUF_SIZE);
-
-			ssize_t len = read(child_to_parent[CH2P_SEL][0],
-					sel_read.buf + start, PIPE_BUF_SIZE);
-			if(len < 0 && errno == EPIPE) {
-				len = 0;
-			}
-			if(len >= 0) {
-				sel_read.array.nmemb = start + len;
-				if(len == 0) {
-					close(child_to_parent[CH2P_SEL][0]);
-					child_to_parent[CH2P_SEL][0] = -1;
-				}
-			} else {
-				perror("read failed");
-			}
+	for(size_t i = 0; i < NUM_READ_FD; i++) {
+		if(read_fd.array[i] >= 0) {
+			close(read_fd.array[i]);
 		}
 	}
 
-	for(size_t i = 0; i < LEN(parent_to_child); i++) {
-		if(parent_to_child[i][1] >= 0) {
-			close(parent_to_child[i][1]);
-		}
+	if(!control_recv_work.disregard) {
+		range_push_mod(&range, read_work.sel.buf.data, read_work.sel.buf.nmemb, OP_Replace);
 	}
-	for(size_t i = 0; i < LEN(child_to_parent); i++) {
-		if(child_to_parent[i][0] >= 0) {
-			close(child_to_parent[i][0]);
-		}
+	for(size_t i = 0; i < NUM_READ_FD; i++) {
+		ARR_FREE(&read_work.array[i].buf);
 	}
 
-	if(!disregard) {
-		range_push_mod(&range, sel_read.buf, sel_read.array.nmemb, OP_Replace);
-		array_free(&sel_read.array);
-	}
 }
 
 void
@@ -737,7 +672,7 @@ toolbar_click(toolbar_t *bar, int x)
 		edge += btn->glyphs.data[btn->glyphs.nmemb - 1].x +
 			g.view.left_margin;
 		if(x < edge) {
-			spawn_command(btn->label.buf);
+			handle_command(btn->label.data);
 			break;
 		}
 		edge += g.view.left_margin;
