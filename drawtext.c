@@ -566,23 +566,6 @@ static pipedesc_t read_child_end[NUM_READ_FD] = {
 	[INDEXOF(read_fd_t, ctl)] = {.name = "werf_control_W"}
 };
 
-static struct {
-	bool disregard;
-} control_recv_work;
-
-static union {
-	struct {
-		pipework_t sel;
-		pipework_t ctl;
-	};
-	pipework_t array[1];
-} read_work = {
-	.ctl = {
-		.handler = control_recv,
-		.usr = &control_recv_work.disregard
-	}
-};
-
 typedef union {
 	struct {
 		int sel;
@@ -593,27 +576,6 @@ static write_fd_t write_fd;
 enum { NUM_WRITE_FD = sizeof write_fd / sizeof write_fd.array[0] };
 
 static pipedesc_t write_child_end[NUM_WRITE_FD];
-
-static struct {
-	char buf[BUFSIZ * 2];
-	dt_range_t rng;
-} selection_send_work;
-
-static union {
-	struct {
-		pipework_t sel;
-	};
-	pipework_t array[1];
-} write_work = {
-	.sel = {
-		.handler = selection_send,
-		.usr = &selection_send_work.rng,
-		.buf = {
-			.data = selection_send_work.buf,
-			.amemb = sizeof selection_send_work.buf
-		}
-	}
-};
 
 void
 handle_command(char *cmd)
@@ -639,7 +601,45 @@ handle_command(char *cmd)
 		fcntl(read_fd.array[i], F_SETFL, O_NONBLOCK);
 	}
 
-	selection_send_work.rng = range;
+	struct {
+		bool disregard;
+	} control_recv_work = {0};
+
+	union {
+		struct {
+			pipework_t sel;
+			pipework_t ctl;
+		};
+		pipework_t array[1];
+	} read_work = {
+		.ctl = {
+			.handler = control_recv,
+			.usr = &control_recv_work.disregard
+		}
+	};
+
+	struct {
+		char buf[BUFSIZ * 2];
+		dt_range_t rng;
+	} selection_send_work = {
+		.rng = range
+	};
+
+	union {
+		struct {
+			pipework_t sel;
+		};
+		pipework_t array[1];
+	} write_work = {
+		.sel = {
+			.handler = selection_send,
+			.usr = &selection_send_work.rng,
+			.buf = {
+				.data = selection_send_work.buf,
+				.amemb = sizeof selection_send_work.buf
+			}
+		}
+	};
 
 	pipe_loop(read_fd.array, read_work.array, NUM_READ_FD,
 			write_fd.array, write_work.array, NUM_WRITE_FD);
