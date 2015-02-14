@@ -155,7 +155,7 @@ windowing_deinit()
 
 void reshape();
 
-static dt_file_t file = INIT_ARRAY(file.lines);
+static dt_file_t file;
 static dt_range_t range = {.file = &file};
 static undobuf_t undobuf;
 static undobuf_t redobuf;
@@ -169,15 +169,15 @@ typedef struct {
 typedef struct {
 	size_t line;
 	bool visible;
-	ARRAY(button_t, data) buttons;
+	ARRAY(button_t) buttons;
 } toolbar_t;
 
-static toolbar_t selbar = {.buttons = INIT_ARRAY(selbar.buttons.data)};
+static toolbar_t selbar;
 
 static ssize_t
 clamp_view_start(ssize_t v)
 {
-	return clampss(v, -g.view.nmemb + 1, file.array.nmemb - 1);
+	return clampss(v, -g.view.nmemb + 1, file.nmemb - 1);
 }
 
 void
@@ -241,7 +241,7 @@ address_move_line(dt_address_t *adr, dt_file_t *f, int move)
 	} else if(move < 0) {
 		move = -1;
 	}
-	if( (move < 0 && adr->line == 0) || (move > 0 && adr->line == f->array.nmemb - 1) ) {
+	if( (move < 0 && adr->line == 0) || (move > 0 && adr->line == f->nmemb - 1) ) {
 		return;
 	}
 
@@ -271,7 +271,7 @@ address_move(dt_address_t *adr, dt_file_t *f, int move)
 		return;
 	}
 
-	if( (move < 0 && adr->line == 0) || (move > 0 && adr->line == f->array.nmemb - 1) ) {
+	if( (move < 0 && adr->line == 0) || (move > 0 && adr->line == f->nmemb - 1) ) {
 		return;
 	}
 
@@ -305,7 +305,7 @@ toolbar_hide(toolbar_t *bar, size_t line)
 	if(line > bar->line) {
 		g.view.start--;
 	}
-	size_t start = clampss(g.view.start, 0, file.array.nmemb - 1);
+	size_t start = clampss(g.view.start, 0, file.nmemb - 1);
 	size_t end = clamp_view_start(g.view.start + g.view.nmemb - 1) + 1;
 	if(bar->line >= start && bar->line <= end) {
 		dirty = true;
@@ -447,16 +447,16 @@ glyph_map(string_t *line, glyphs_t *gl)
 {
 	gl->glyph_to_offset = xrealloc(gl->glyph_to_offset, gl->nmemb,
 			sizeof gl->glyph_to_offset[0]);
-	gl->offset_to_glyph = xrealloc(gl->offset_to_glyph, line->array.nmemb,
+	gl->offset_to_glyph = xrealloc(gl->offset_to_glyph, line->nmemb,
 			sizeof gl->offset_to_glyph[0]);
 
-	char *utf8 = line->buf;
-	size_t len = line->array.nmemb;
+	char *utf8 = line->data;
+	size_t len = line->nmemb;
 
 	int gi = 0;
 	size_t oi = 0;
 	for(size_t chsiz = 0; (chsiz = utf8chsiz(utf8, len)) != 0 &&
-			gi < gl->nmemb && oi < line->array.nmemb;
+			gi < gl->nmemb && oi < line->nmemb;
 			utf8 += chsiz, len -= chsiz) {
 		gl->glyph_to_offset[gi] = oi;
 		gl->offset_to_glyph[oi] = gi;
@@ -470,21 +470,21 @@ glyph_map(string_t *line, glyphs_t *gl)
 void
 text_to_glyphs(string_t *line, glyphs_t *gl)
 {
-	if(line->array.nmemb > (size_t)gl->nmemb) {
-		gl->nmemb = line->array.nmemb;
+	if(line->nmemb > (size_t)gl->nmemb) {
+		gl->nmemb = line->nmemb;
 		gl->data = xrealloc(gl->data, gl->nmemb, sizeof gl->data[0]);
 	}
 	cairo_glyph_t *gl_initial = gl->data;
 
-	bool last_line = line->array.nmemb == 0 || line->buf[line->array.nmemb - 1] != '\n';
+	bool last_line = line->nmemb == 0 || line->data[line->nmemb - 1] != '\n';
 	if(last_line) {
-		array_extend(&line->array, 1);
-		line->buf[line->array.nmemb - 1] = '\n';
+		ARR_EXTEND(line, 1);
+		line->data[line->nmemb - 1] = '\n';
 	}
 
 	cairo_scaled_font_t *sc = cairo_get_scaled_font(g.win.buf);
 
-	dt_face_text_to_glyphs(sc, line->buf, line->array.nmemb,
+	dt_face_text_to_glyphs(sc, line->data, line->nmemb,
 			&gl->data, &gl->nmemb, NULL, NULL, NULL);
 	if(gl->data != gl_initial) {
 		free(gl_initial);
@@ -499,14 +499,14 @@ text_to_glyphs(string_t *line, glyphs_t *gl)
 	glyph_map(line, gl);
 
 	if(last_line) {
-		line->array.nmemb--;
+		line->nmemb--;
 	}
 }
 
 void
 xy_to_address(int x, int y, dt_address_t *adr)
 {
-	adr->line = clampss(y_to_line(y), 0, file.array.nmemb - 1);
+	adr->line = clampss(y_to_line(y), 0, file.nmemb - 1);
 	adr->offset = x_to_offset(adr->line, x);
 	g.view.last_x = address_to_x(adr);
 }
@@ -732,7 +732,7 @@ void
 toolbar_click(toolbar_t *bar, int x)
 {
 	double edge = g.view.left_margin;
-	for(size_t i = 0; i < bar->buttons.array.nmemb; i++) {
+	for(size_t i = 0; i < bar->buttons.nmemb; i++) {
 		button_t *btn = &bar->buttons.data[i];
 		edge += btn->glyphs.data[btn->glyphs.nmemb - 1].x +
 			g.view.left_margin;
@@ -766,7 +766,7 @@ mouse_press(XEvent *ev)
 		}
 
 		selecting = true;
-		g.anchor.line = clampss(nr + corr, 0, file.array.nmemb - 1);
+		g.anchor.line = clampss(nr + corr, 0, file.nmemb - 1);
 		g.anchor.offset = x_to_offset(g.anchor.line, e->x);
 		g.view.last_x = address_to_x(&g.anchor);
 		range.start = g.anchor;
@@ -957,7 +957,7 @@ draw_toolbar(toolbar_t *bar)
 	cairo_get_font_matrix(g.win.buf, &mat);
 	cairo_set_font_size(g.win.buf, mat.xx * s);
 
-	for(size_t i = 0; i < bar->buttons.array.nmemb; i++) {
+	for(size_t i = 0; i < bar->buttons.nmemb; i++) {
 		draw_button(&bar->buttons.data[i]);
 	}
 
@@ -968,10 +968,10 @@ draw_toolbar(toolbar_t *bar)
 void
 reshape()
 {
-	size_t start = clampss(g.view.start, 0, file.array.nmemb - 1);
+	size_t start = clampss(g.view.start, 0, file.nmemb - 1);
 	size_t end = clamp_view_start(g.view.start + g.view.nmemb - 1);
 	for(size_t i = start; i <= end; i++) {
-		string_t *line = &file.lines[i];
+		string_t *line = &file.data[i];
 		glyphs_t *gl = &g.view.lines[i - g.view.start];
 		text_to_glyphs(line, gl);
 	}
@@ -987,7 +987,7 @@ redraw()
 	cairo_identity_matrix(g.win.buf);
 	cairo_set_source_rgba(g.win.buf, 0, 0, 0, 1);
 
-	size_t start = clampss(g.view.start, 0, file.array.nmemb - 1);
+	size_t start = clampss(g.view.start, 0, file.nmemb - 1);
 	size_t end = clamp_view_start(g.view.start + g.view.nmemb - 1);
 	size_t i = start;
 	for(; i <= end; i++) {
@@ -1153,7 +1153,7 @@ file_read(char *fname, dt_file_t *f)
 	dt_range_read(&(dt_range_t){.file = f}, fd);
 	close(fd);
 
-	printf("file lines: %zu\n", f->array.nmemb);
+	printf("file lines: %zu\n", f->nmemb);
 }
 
 int
@@ -1193,16 +1193,15 @@ main(int argc, char *argv[])
 	char *lbl = labels;
 	for(char *next; (next = strchr(lbl, '\n')) != NULL; lbl = next) {
 		next++;
-		array_extend(&selbar.buttons.array, 1);
-		button_t *btn = &selbar.buttons.data[selbar.buttons.array.nmemb - 1];
-		btn->label.buf = lbl;
-		btn->label.array.nmemb = next - lbl;
-		btn->label.array.amemb = btn->label.array.nmemb;
-		btn->label.array.size = 1;
+		ARR_EXTEND(&selbar.buttons, 1);
+		button_t *btn = &selbar.buttons.data[selbar.buttons.nmemb - 1];
+		btn->label.data = lbl;
+		btn->label.nmemb = next - lbl;
+		btn->label.amemb = btn->label.nmemb;
 		memset(&btn->glyphs, 0, sizeof btn->glyphs);
 
 		text_to_glyphs(&btn->label, &btn->glyphs);
-		btn->label.buf[btn->label.array.nmemb - 1] = '\0';
+		btn->label.data[btn->label.nmemb - 1] = '\0';
 	}
 	cairo_restore(g.win.buf);
 

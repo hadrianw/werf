@@ -14,103 +14,128 @@ array_free(array_t *a)
 	a->nmemb = 0;
 }
 
-void
-array_resize(array_t *a, size_t n)
+bool
+array_realloc(array_t *a, size_t size, size_t amemb)
 {
-	size_t next = next_size(n, a->size * 8);
-	a->nmemb = n;
+	a->amemb = amemb;
+	a->ptr = realloc(a->ptr, a->amemb * size);
+	if(!a->ptr) {
+		a->amemb = 0;
+		a->nmemb = 0;
+		return true;
+	}
+	return false;
+}
+
+bool
+array_resize(array_t *a, size_t size, size_t nmemb)
+{
+	size_t next = next_size(nmemb, size * 8);
+	a->nmemb = nmemb;
 	if(a->nmemb > a->amemb || next * 4 < a->amemb) {
-		a->amemb = next;
-		a->ptr = xrealloc(a->ptr, a->amemb, a->size);
+		return array_realloc(a, size, next);
 	}
+	return false;
+}
+
+bool
+array_extend(array_t *a, size_t size, size_t nmore)
+{
+	if(!nmore) {
+		return false;
+	}
+
+	return array_resize(a, size, a->nmemb + nmore);
+}
+
+bool
+array_shrink(array_t *a, size_t size, size_t nless)
+{
+	if(!nless) {
+		return false;
+	}
+	if(nless > a->nmemb) {
+		return true;
+	}
+
+	return array_resize(a, size, a->nmemb - nless);
+}
+
+bool
+array_fragment_bounds(array_t *a, ssize_t start, ssize_t end,
+		size_t *out_start, size_t *out_end)
+{
+	ssize_t s;
+	ssize_t e;
+
+	if(start >= 0) {
+		s = start;
+	} else {
+		size_t last = a->nmemb > 0 ? a->nmemb-1 : 0;
+		s = last + start+1;
+	}
+
+	if(end >= 0) {
+		e = end;
+	} else {
+		e = a->nmemb + end+1;
+	}
+
+	if(s < 0 || e < 0 || s > e || (size_t)e > a->nmemb) {
+		return true;
+	}
+
+	*out_start = s;
+	*out_end = e;
+
+	return false;
 }
 
 void
-array_extend(array_t *a, ssize_t nchange)
+array_fragment_apply(array_t *a, size_t size, size_t start, size_t end,
+		array_memb_func_t func)
 {
-	DIEIF(-nchange > (ssize_t)a->nmemb);
-	array_resize(a, a->nmemb + nchange);
-}
-
-static void
-slice_validate(slice_t *slice, size_t *out_start, size_t *out_end)
-{
-	DIEIF(slice == NULL);
-	DIEIF(slice->array == NULL);
-	
-	ssize_t start;
-	ssize_t end;
-
-	if(slice->start >= 0) {
-		start = slice->start;
-	} else {
-		size_t last = slice->array->nmemb > 0 ? slice->array->nmemb-1 : 0;
-		start = last + slice->start+1;
-	}
-
-	if(slice->end >= 0) {
-		end = slice->end;
-	} else {
-		end = slice->array->nmemb + slice->end+1;
-	}
-
-	DIEIF(start < 0);
-	DIEIF(end < 0);
-	DIEIF(start > end);
-	DIEIF((size_t)end > slice->array->nmemb);
-
-	*out_start = start;
-	*out_end = end;
-}
-
-void
-slice_apply(slice_t *slice, slice_memb_func_t func)
-{
-	size_t start;
-	size_t end;
-	slice_validate(slice, &start, &end);
-
-	char *ptr = slice->array->ptr;
-	ptr += start * slice->array->size;
+	char *ptr = a->ptr;
+	ptr += start * size;
 	for(size_t i = start; i < end; i++) {
 		func(ptr);
-		ptr += slice->array->size;
+		ptr += size;
 	}
 }
 
 void
-slice_shift(slice_t *slice, ssize_t shift)
+array_fragment_shift(array_t *a, size_t size, size_t start, size_t end,
+		ssize_t shift)
 {
-	size_t start;
-	size_t end;
-	slice_validate(slice, &start, &end);
-
 	size_t nmemb = end - start;
 
-	char *first = slice->array->ptr;
-	first += start * slice->array->size;
-	memshift(shift, first, nmemb, slice->array->size);
+	char *first = a->ptr;
+	first += start * size;
+	memshift(shift, first, nmemb, size);
 }
 
-void
-slice_resize(slice_t *slice, size_t nmemb)
+bool
+array_fragment_resize(array_t *a, size_t size, size_t start, size_t end,
+		size_t nmemb)
 {
-	size_t start;
-	size_t end;
-	slice_validate(slice, &start, &end);
-
 	ssize_t shift = nmemb - (end - start);
 	if(shift > 0) {
-		array_extend(slice->array, shift); 
+		if(array_extend(a, size, shift)) {
+			return true;
+		}
 	}
 
-	slice_shift(&(slice_t){slice->array, start, -1}, shift);
+	array_fragment_shift(a, size, start, a->nmemb, shift);
 
 	if(shift < 0) {
-		array_extend(slice->array, shift); 
+		if(array_shrink(a, size, -shift)) {
+			return true;
+		}
 	}
+	return false;
 }
 
+/*
 void *
 slice_get(slice_t *slice, ssize_t idx)
 {
@@ -135,3 +160,4 @@ slice_get(slice_t *slice, ssize_t idx)
 
 	return (char*)slice->array->ptr + idx * slice->array->size;
 }
+*/

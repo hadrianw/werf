@@ -16,20 +16,19 @@
 void
 dt_file_insert_line(dt_file_t *f, size_t line, char *buf, size_t buf_len)
 {
-	slice_resize(&(slice_t){&f->array, line, line}, 1);
+	ARR_FRAG_RESIZE(f, line, line, 1);
 
-	memset(f->lines + line, 0, sizeof f->lines[0]);
-	f->lines[line].array.size = 1;
-	array_resize(&f->lines[line].array, buf_len);
+	memset(f->data + line, 0, sizeof f->data[0]);
+	ARR_RESIZE(&f->data[line], buf_len);
 
-	memcpy(f->lines[line].buf, buf, buf_len);
+	memcpy(f->data[line].data, buf, buf_len);
 }
 
 void
 dt_file_free(dt_file_t *f)
 {
-	slice_apply(&(slice_t){&f->array, 0, -1}, (slice_memb_func_t)array_free);
-	free(f->lines);
+	ARR_FRAG_APPLY(f, 0, f->nmemb, (array_memb_func_t)array_free);
+	ARR_FREE(f);
 }
 
 int
@@ -78,7 +77,7 @@ dt_range_fix_end(dt_range_t *rng)
 void
 dt_range_mod_line(dt_range_t *rng, char *mod_line, size_t mod_len)
 {
-	string_t *line = rng->file->lines + rng->start.line;
+	string_t *line = rng->file->data + rng->start.line;
 
 	size_t end_offset;
 	size_t rest_len;
@@ -87,22 +86,22 @@ dt_range_mod_line(dt_range_t *rng, char *mod_line, size_t mod_len)
 	if(rng->start.line == rng->end.line) {
 		end_offset = rng->end.offset;
 	} else {
-		end_offset = line->array.nmemb;
+		end_offset = line->nmemb;
 	}
 
-	rest_len = line->array.nmemb - end_offset;
+	rest_len = line->nmemb - end_offset;
 	insert_new_line = (rest_len > 0 || rng->start.line == rng->end.line) &&
 			mod_len > 0 && mod_line[mod_len - 1] == '\n';
 
 	if(insert_new_line) {
-		char *rest = line->buf + end_offset;
+		char *rest = line->data + end_offset;
 		dt_file_insert_line(rng->file, rng->end.line+1, rest, rest_len);
-		line = rng->file->lines + rng->start.line;
-		line->array.nmemb -= rest_len;
+		line = rng->file->data + rng->start.line;
+		line->nmemb -= rest_len;
 	}
 
-	slice_resize(&(slice_t){&line->array, rng->start.offset, end_offset}, mod_len);
-	memcpy(line->buf + rng->start.offset, mod_line, mod_len);
+	ARR_FRAG_RESIZE(line, rng->start.offset, end_offset, mod_len);
+	memcpy(line->data + rng->start.offset, mod_line, mod_len);
 
 	if(mod_len > 0 && mod_line[mod_len - 1] == '\n') {
 		rng->start.line++;
@@ -113,22 +112,21 @@ dt_range_mod_line(dt_range_t *rng, char *mod_line, size_t mod_len)
 
 	rng->start.offset += mod_len;
 
-	bool join_end_line = rest_len == 0 && rng->start.line+1 < rng->file->array.nmemb;
+	bool join_end_line = rest_len == 0 && rng->start.line+1 < rng->file->nmemb;
 	if(join_end_line) {
 		if(rng->start.line == rng->end.line) {
 			rng->end.line++;
 			rng->end.offset = 0;
 		}
-		string_t *rest_line = rng->file->lines + rng->end.line;
-		char *rest = rest_line->buf + rng->end.offset;
-		rest_len = rest_line->array.nmemb - rng->end.offset;
+		string_t *rest_line = rng->file->data + rng->end.line;
+		char *rest = rest_line->data + rng->end.offset;
+		rest_len = rest_line->nmemb - rng->end.offset;
 
-		slice_resize(&(slice_t){&line->array, rng->start.offset, -1}, rest_len);
-		memcpy(line->buf + rng->start.offset, rest, rest_len);
+		ARR_FRAG_RESIZE(line, rng->start.offset, line->nmemb, rest_len);
+		memcpy(line->data + rng->start.offset, rest, rest_len);
 
-		slice_t slice = {&rng->file->array, rng->start.line+1, rng->end.line+1};
-		slice_apply(&slice, (slice_memb_func_t)array_free);
-		slice_resize(&slice, 0);
+		ARR_FRAG_APPLY(rng->file, rng->start.line+1, rng->end.line+1, (array_memb_func_t)array_free);
+		ARR_FRAG_RESIZE(rng->file, rng->start.line+1, rng->end.line+1, 0);
 	}
 
 	rng->end.line = rng->start.line;
@@ -187,11 +185,11 @@ dt_range_copy(dt_range_t *rng, char *buf, size_t bufsiz)
 	rng->start.offset = rng->end.offset;
 
 	do {
-		string_t *line = &rng->file->lines[rng->start.line];
+		string_t *line = &rng->file->data[rng->start.line];
 		if(rng->start.line == rng->end.line) {
 			siz = rng->end.offset - off;
 		} else {
-			siz = line->array.nmemb - off;
+			siz = line->nmemb - off;
 		}
 		if(len + siz > bufsiz) {
 			siz = bufsiz - len;
@@ -199,12 +197,13 @@ dt_range_copy(dt_range_t *rng, char *buf, size_t bufsiz)
 		} else if(rng->start.line != rng->end.line) {
 			rng->start.line++;
 		}
-		memcpy(buf + len, line->buf + off, siz);
+		memcpy(buf + len, line->data + off, siz);
 		len += siz;
 		off = 0;
 	} while(len < bufsiz && rng->start.line < rng->end.line);
 	return len;
 }
+
 
 static void
 undobuf_extend(undobuf_t *u, size_t ext)
@@ -264,21 +263,21 @@ dt_range_push_mod(dt_range_t *rng, char *mod, size_t mod_len, undobuf_t *u, dt_o
 	size_t off = rng->start.offset;
 	size_t siz;
 	for(size_t i = rng->start.line; i <= rng->end.line; i++) {
-		string_t *line = &rng->file->lines[i];
+		string_t *line = &rng->file->data[i];
 		if(i == rng->end.line) {
 			siz = rng->end.offset - off;
 		} else {
-			siz = line->array.nmemb - off;
+			siz = line->nmemb - off;
 		}
 		
 		undobuf_extend(u, siz);
 		last = (undo_t*)((char*)u->first + u->last);
 
 		if(type != OP_BackSpace) {
-			memcpy(last->buf + last->buf_len, line->buf + off, siz);
+			memcpy(last->buf + last->buf_len, line->data + off, siz);
 		} else {
 			memmove(last->buf + siz, last->buf, last->buf_len);
-			memcpy(last->buf, line->buf + off, siz);
+			memcpy(last->buf, line->data + off, siz);
 		}
 		last->buf_len += siz;
 

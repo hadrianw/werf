@@ -1,5 +1,4 @@
-typedef ARRAY(char, buf) string_t;
-typedef ARRAY(string_t, lines) dt_file_t;
+typedef ARRAY(string_t) dt_file_t;
 
 void dt_file_insert_line(dt_file_t *f, size_t line, char *buf, size_t buf_len);
 void dt_file_free(dt_file_t *f);
