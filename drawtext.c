@@ -525,6 +525,20 @@ typedef struct {
 } control_t;
 
 int
+selection_recv(void *ctl, void *usr, string_t *buf, size_t len)
+{
+	(void)usr;
+	control_t *control = ctl;
+	if(!len) {
+		return 0;
+	}
+	if(control->disregard) {
+		buf->nmemb -= len;
+	}
+	return 0;
+}
+
+int
 control_recv(void *ctl, void *usr, string_t *buf, size_t len)
 {
 	(void)usr;
@@ -612,12 +626,17 @@ handle_command(char *cmd)
 		};
 		pipe_t array[1];
 	} r_pipe = {
+		.selection = {
+			.work = {
+				.handler = selection_recv
+			}
+		},
 		.control = {
 			.child = {
 				.name = "werf_control_W"
 			},
 			.work = {
-				.handler = control_recv,
+				.handler = control_recv
 			}
 		}
 	};
