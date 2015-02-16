@@ -1,0 +1,6 @@
+#!/bin/sh
+if [ -n "$werf_control_W" ]; then
+	echo finish > $werf_control_W
+fi
+
+exec xclip -i > /dev/null

@@ -1,0 +1,7 @@
+#!/bin/sh
+if [ -n "$werf_control_W" ]; then
+	echo disregard > $werf_control_W
+	echo finish > $werf_control_W
+fi
+
+exec xclip -i > /dev/null
