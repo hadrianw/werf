@@ -98,10 +98,10 @@ out:
 }
 
 static void
-pipe_send(int *fd, pipework_t *work)
+pipe_send(int *fd, void *ctl, pipework_t *work)
 {
 	if(work->handler) {
-		work->handler(work->usr, &work->buf, 0);
+		work->handler(ctl, work->usr, &work->buf, 1);
 	}
 
 	ssize_t len;
@@ -109,7 +109,7 @@ pipe_send(int *fd, pipework_t *work)
 			( (len = write(*fd, work->buf.data, work->buf.nmemb)) < 0 &&
 			errno == EPIPE )) {
 		if(work->handler) {
-			work->handler(work->usr, &work->buf, &(size_t){0});
+			work->handler(ctl, work->usr, &work->buf, 0);
 		}
 		close(*fd);
 		*fd = -1;
@@ -125,7 +125,7 @@ pipe_send(int *fd, pipework_t *work)
 }
 
 static void
-pipe_recv(int *fd, pipework_t *work)
+pipe_recv(int *fd, void *ctl, pipework_t *work)
 {
 	enum { PIPE_BUF_SIZE = BUFSIZ * 2 };
 
@@ -145,7 +145,7 @@ pipe_recv(int *fd, pipework_t *work)
 	work->buf.nmemb = start + len;
 
 	if(work->handler) {
-		work->handler(work->usr, &work->buf, &(size_t){len});
+		work->handler(ctl, work->usr, &work->buf, len);
 	}
 
 	if(len == 0) {
@@ -155,7 +155,8 @@ pipe_recv(int *fd, pipework_t *work)
 }
 
 int
-pipe_loop(pid_t *pid, pipe_t r_pipe[], size_t num_r_pipe, pipe_t w_pipe[], size_t num_w_pipe)
+pipe_loop(pid_t *pid, void *ctl, pipe_t r_pipe[], size_t num_r_pipe,
+		pipe_t w_pipe[], size_t num_w_pipe)
 {
 	fd_set rfd;
 	fd_set wfd;
@@ -188,13 +189,13 @@ pipe_loop(pid_t *pid, pipe_t r_pipe[], size_t num_r_pipe, pipe_t w_pipe[], size_
 
 		for(size_t i = 0; i < num_w_pipe; i++) {
 			if(w_pipe[i].fd >= 0 && FD_ISSET(w_pipe[i].fd, &wfd)) {
-				pipe_send(&w_pipe[i].fd, &w_pipe[i].work);
+				pipe_send(&w_pipe[i].fd, ctl, &w_pipe[i].work);
 				break;
 			}
 		}
 		for(size_t i = 0; i < num_r_pipe; i++) {
 			if(r_pipe[i].fd >= 0 && FD_ISSET(r_pipe[i].fd, &rfd)) {
-				pipe_recv(&r_pipe[i].fd, &r_pipe[i].work);
+				pipe_recv(&r_pipe[i].fd, ctl, &r_pipe[i].work);
 				break;
 			}
 		}
@@ -204,7 +205,7 @@ pipe_loop(pid_t *pid, pipe_t r_pipe[], size_t num_r_pipe, pipe_t w_pipe[], size_
 		repeat = false;
 		for(size_t i = 0; i < num_r_pipe; i++) {
 			if(r_pipe[i].fd >= 0) {
-				pipe_recv(&r_pipe[i].fd, &r_pipe[i].work);
+				pipe_recv(&r_pipe[i].fd, ctl, &r_pipe[i].work);
 				repeat = true;
 			}
 		}

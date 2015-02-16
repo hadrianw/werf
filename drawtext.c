@@ -525,32 +525,33 @@ typedef struct {
 } control_t;
 
 int
-control_recv(void *usr, string_t *buf, size_t *len)
+control_recv(void *ctl, void *usr, string_t *buf, size_t len)
 {
-	if(!*len) {
+	(void)usr;
+	if(!len) {
 		return 0;
 	}
 	static const char disregard_str[] = "disregard";
 	static const char finish_str[] = "finish";
 
-	control_t *work = usr;
+	control_t *control = ctl;
 
 	size_t shift = 0;
 
 	char *delim;
-	char *scan_start = buf->data + buf->nmemb - *len;
+	char *scan_start = buf->data + buf->nmemb - len;
 	char *line_start = buf->data;
-	while( (delim = memchr(scan_start, '\n', *len)) ) {
+	while( (delim = memchr(scan_start, '\n', len)) ) {
 		size_t line_len = delim - line_start;
 
 		if( !strncmp(line_start, disregard_str, MIN(line_len, sizeof disregard_str - 1)) ) {
 			puts("disregard");
-			work->disregard = true;
+			control->disregard = true;
 		} else if( !strncmp(line_start, finish_str, MIN(line_len, sizeof finish_str - 1)) ) {
 			puts("finish");
-			work->finish = true;
-			if(work->end) {
-				work->pid = 0;
+			control->finish = true;
+			if(control->end) {
+				control->pid = 0;
 			}
 		} else {
 			fprintf(stderr, "unknown ctl command: '%.*s'\n", (int)line_len, line_start);
@@ -559,7 +560,7 @@ control_recv(void *usr, string_t *buf, size_t *len)
 		scan_start = delim + 1;
 		line_start = scan_start;
 
-		*len -= line_len + 1;
+		len -= line_len + 1;
 		shift += line_len + 1;
 	}
 	ARR_FRAG_SHIFT(buf, 0, buf->nmemb, -shift);
@@ -574,13 +575,14 @@ typedef struct {
 } selection_send_work_t;
 
 int
-selection_send(void *usr, string_t *buf, size_t *len)
+selection_send(void *ctl, void *usr, string_t *buf, size_t len)
 {
+	control_t *control = ctl;
 	selection_send_work_t *work = usr;
-	if(len) {
-		work->control->end = true;
-		if(work->control->finish) {
-			work->control->pid = 0;
+	if(!len) {
+		control->end = true;
+		if(control->finish) {
+			control->pid = 0;
 		}
 		return 0;
 	}
@@ -616,7 +618,6 @@ handle_command(char *cmd)
 			},
 			.work = {
 				.handler = control_recv,
-				.usr = &control
 			}
 		}
 	};
@@ -664,7 +665,8 @@ handle_command(char *cmd)
 		fcntl(r_pipe.array[i].fd, F_SETFL, O_NONBLOCK);
 	}
 
-	pipe_loop(&control.pid, r_pipe.array, num_r_pipe, w_pipe.array, num_w_pipe);
+	pipe_loop(&control.pid, &control, r_pipe.array, num_r_pipe,
+			w_pipe.array, num_w_pipe);
 
 	for(size_t i = 0; i < num_w_pipe; i++) {
 		if(w_pipe.array[i].fd >= 0) {
