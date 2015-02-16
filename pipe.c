@@ -159,12 +159,11 @@ pipe_loop(pid_t *pid, pipe_t r_pipe[], size_t num_r_pipe, pipe_t w_pipe[], size_
 {
 	fd_set rfd;
 	fd_set wfd;
-	int max;
+	int max = -1;
 
-	for(; *pid > 0;) {
+	for(; *pid > 0; max = -1) {
 		FD_ZERO(&wfd);
 		FD_ZERO(&rfd);
-		max = -1;
 		for(size_t i = 0; i < num_w_pipe; i++) {
 			if(w_pipe[i].fd >= 0) {
 				FD_SET(w_pipe[i].fd, &wfd);
@@ -200,11 +199,14 @@ pipe_loop(pid_t *pid, pipe_t r_pipe[], size_t num_r_pipe, pipe_t w_pipe[], size_
 			}
 		}
 	}
-	// TODO: while(errno != EAGAIN)
-	for(size_t i = 0; i < num_r_pipe; i++) {
-		if(r_pipe[i].fd >= 0) {
-			pipe_recv(&r_pipe[i].fd, &r_pipe[i].work);
-			break;
+	bool repeat = max >= 0;
+	while(repeat) {
+		repeat = false;
+		for(size_t i = 0; i < num_r_pipe; i++) {
+			if(r_pipe[i].fd >= 0) {
+				pipe_recv(&r_pipe[i].fd, &r_pipe[i].work);
+				repeat = true;
+			}
 		}
 	}
 	return 0;
