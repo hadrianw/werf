@@ -517,12 +517,23 @@ static int scroll_y = 0;
 static int prevx, prevy;
 static bool selecting;
 
+typedef struct {
+	bool disregard;
+	bool finish;
+	bool end;
+	pid_t pid;
+} control_t;
+
 int
 control_recv(void *usr, string_t *buf, size_t *len)
 {
+	if(!*len) {
+		return 0;
+	}
 	static const char disregard_str[] = "disregard";
+	static const char finish_str[] = "finish";
 
-	bool *disregard = usr;
+	control_t *work = usr;
 
 	size_t shift = 0;
 
@@ -533,10 +544,16 @@ control_recv(void *usr, string_t *buf, size_t *len)
 		size_t line_len = delim - line_start;
 
 		if( !strncmp(line_start, disregard_str, MIN(line_len, sizeof disregard_str - 1)) ) {
-			puts("olo");
-			*disregard = true;
+			puts("disregard");
+			work->disregard = true;
+		} else if( !strncmp(line_start, finish_str, MIN(line_len, sizeof finish_str - 1)) ) {
+			puts("finish");
+			work->finish = true;
+			if(work->end) {
+				work->pid = 0;
+			}
 		} else {
-			fputs("unknown ctl command\n", stderr);
+			fprintf(stderr, "unknown ctl command: '%.*s'\n", (int)line_len, line_start);
 		}
 
 		scan_start = delim + 1;
@@ -550,41 +567,26 @@ control_recv(void *usr, string_t *buf, size_t *len)
 	return 0;
 }
 
+typedef struct {
+	control_t *control;
+	dt_range_t rng;
+	char buf[BUFSIZ * 2];
+} selection_send_work_t;
+
 int
 selection_send(void *usr, string_t *buf, size_t *len)
 {
-	(void)len;
-	dt_range_t *rng = usr;
-	buf->nmemb += dt_range_copy(rng, buf->data + buf->nmemb, buf->amemb - buf->nmemb);
+	selection_send_work_t *work = usr;
+	if(len) {
+		work->control->end = true;
+		if(work->control->finish) {
+			work->control->pid = 0;
+		}
+		return 0;
+	}
+	buf->nmemb += dt_range_copy(&work->rng, buf->data + buf->nmemb, buf->amemb - buf->nmemb);
 	return 0;
 }
-
-#define INDEXOF(st, m) (offsetof(st, m) / sizeof(((st *)0)->m))
-
-typedef union {
-	struct {
-		int sel;
-		int ctl;
-	};
-	int array[1];
-} read_fd_t;
-read_fd_t read_fd;
-enum { NUM_READ_FD = sizeof read_fd / sizeof read_fd.array[0] };
-
-static pipedesc_t read_child_end[NUM_READ_FD] = {
-	[INDEXOF(read_fd_t, ctl)] = {.name = "werf_control_W"}
-};
-
-typedef union {
-	struct {
-		int sel;
-	};
-	int array[1];
-} write_fd_t;
-static write_fd_t write_fd;
-enum { NUM_WRITE_FD = sizeof write_fd / sizeof write_fd.array[0] };
-
-static pipedesc_t write_child_end[NUM_WRITE_FD];
 
 void
 handle_command(char *cmd)
@@ -595,80 +597,92 @@ handle_command(char *cmd)
 		return;
 	}
 
-	char *argv[] = {"sh", "-c", cmd, (char*)0};
-	pid_t pid = pipe_spawn(argv, read_fd.array, read_child_end, NUM_READ_FD,
-		write_fd.array, write_child_end, NUM_WRITE_FD);
-	if(pid < 0) {
-		fprintf(stderr, "couldn't spawn command: %s\n", strerror(-pid));
-		return;
-	}
-
-	for(size_t i = 0; i < NUM_WRITE_FD; i++) {
-		fcntl(write_fd.array[i], F_SETFL, O_NONBLOCK);
-	}
-	for(size_t i = 0; i < NUM_READ_FD; i++) {
-		fcntl(read_fd.array[i], F_SETFL, O_NONBLOCK);
-	}
-
-	struct {
-		bool disregard;
-	} control_recv_work = {0};
+	control_t control = {0};
 
 	union {
 		struct {
-			pipework_t sel;
-			pipework_t ctl;
+			pipe_t selection;
+			pipe_t control;
+			/*
+			pipe_t after_selection;
+			pipe_t before_selection;
+			*/
 		};
-		pipework_t array[1];
-	} read_work = {
-		.ctl = {
-			.handler = control_recv,
-			.usr = &control_recv_work.disregard
+		pipe_t array[1];
+	} r_pipe = {
+		.control = {
+			.child = {
+				.name = "werf_control_W"
+			},
+			.work = {
+				.handler = control_recv,
+				.usr = &control
+			}
 		}
 	};
+	size_t num_r_pipe = sizeof r_pipe / sizeof r_pipe.array[0];
 
-	struct {
-		char buf[BUFSIZ * 2];
-		dt_range_t rng;
-	} selection_send_work = {
+	selection_send_work_t selection_send_work = {
+		.control = &control,
 		.rng = range
 	};
 
 	union {
 		struct {
-			pipework_t sel;
+			pipe_t selection;
+			/*
+			pipe_t after_selection;
+			pipe_t before_selection;
+			*/
 		};
-		pipework_t array[1];
-	} write_work = {
-		.sel = {
-			.handler = selection_send,
-			.usr = &selection_send_work.rng,
-			.buf = {
-				.data = selection_send_work.buf,
-				.amemb = sizeof selection_send_work.buf
+		pipe_t array[1];
+	} w_pipe = {
+		.selection = {
+			.work = {
+				.handler = selection_send,
+				.usr = &selection_send_work,
+				.buf = {
+					.data = selection_send_work.buf,
+					.amemb = sizeof selection_send_work.buf
+				}
 			}
-		}
+		},
 	};
+	size_t num_w_pipe = sizeof w_pipe / sizeof w_pipe.array[0];
 
-	pipe_loop(read_fd.array, read_work.array, NUM_READ_FD,
-			write_fd.array, write_work.array, NUM_WRITE_FD);
+	char *argv[] = {"sh", "-c", cmd, (char*)0};
+	control.pid = pipe_spawn(argv, r_pipe.array, num_r_pipe, w_pipe.array, num_w_pipe);
+	if(control.pid < 0) {
+		fprintf(stderr, "couldn't spawn command: %s\n", strerror(-control.pid));
+		return;
+	}
 
-	for(size_t i = 0; i < NUM_WRITE_FD; i++) {
-		if(write_fd.array[i] >= 0) {
-			close(write_fd.array[i]);
+	for(size_t i = 0; i < num_w_pipe; i++) {
+		fcntl(w_pipe.array[i].fd, F_SETFL, O_NONBLOCK);
+	}
+	for(size_t i = 0; i < num_r_pipe; i++) {
+		fcntl(r_pipe.array[i].fd, F_SETFL, O_NONBLOCK);
+	}
+
+	pipe_loop(&control.pid, r_pipe.array, num_r_pipe, w_pipe.array, num_w_pipe);
+
+	for(size_t i = 0; i < num_w_pipe; i++) {
+		if(w_pipe.array[i].fd >= 0) {
+			close(w_pipe.array[i].fd);
 		}
 	}
-	for(size_t i = 0; i < NUM_READ_FD; i++) {
-		if(read_fd.array[i] >= 0) {
-			close(read_fd.array[i]);
+	for(size_t i = 0; i < num_r_pipe; i++) {
+		if(r_pipe.array[i].fd >= 0) {
+			close(r_pipe.array[i].fd);
 		}
 	}
 
-	if(!control_recv_work.disregard) {
-		range_push_mod(&range, read_work.sel.buf.data, read_work.sel.buf.nmemb, OP_Replace);
+	if(!control.disregard) {
+		range_push_mod(&range, r_pipe.selection.work.buf.data,
+				r_pipe.selection.work.buf.nmemb, OP_Replace);
 	}
-	for(size_t i = 0; i < NUM_READ_FD; i++) {
-		ARR_FREE(&read_work.array[i].buf);
+	for(size_t i = 0; i < num_r_pipe; i++) {
+		ARR_FREE(&r_pipe.array[i].work.buf);
 	}
 
 }
