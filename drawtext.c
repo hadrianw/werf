@@ -542,6 +542,7 @@ control_recv(void *usr, string_t *buf, size_t *len)
 		scan_start = delim + 1;
 		line_start = scan_start;
 
+		*len -= line_len + 1;
 		shift += line_len + 1;
 	}
 	ARR_FRAG_SHIFT(buf, 0, buf->nmemb, -shift);
