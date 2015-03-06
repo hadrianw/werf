@@ -1,6 +1,7 @@
 #include <sys/types.h>
 #include <sys/select.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <signal.h>
@@ -57,10 +58,21 @@ typedef struct {
 	int last_x;
 } view_t;
 
+typedef struct {
+	bool disregard;
+	bool finish;
+	bool write_end;
+	bool done;
+	bool exited;
+	pid_t pid;
+	int status;
+} control_t;
+
 static struct {
 	windowing_t win;
 	view_t view;
 	dt_address_t anchor;
+	control_t *child;
 } g = {
 	.win = {800, 600},
 };
@@ -466,7 +478,6 @@ glyph_map(string_t *line, glyphs_t *gl)
 		oi += chsiz;
 		gi++;
 	}
-
 }
 
 void
@@ -517,13 +528,6 @@ static int scroll_y = 0;
 static int prevx, prevy;
 static bool selecting;
 
-typedef struct {
-	bool disregard;
-	bool finish;
-	bool end;
-	pid_t pid;
-} control_t;
-
 int
 selection_recv(void *ctl, void *usr, string_t *buf, size_t len)
 {
@@ -538,6 +542,18 @@ selection_recv(void *ctl, void *usr, string_t *buf, size_t len)
 	return 0;
 }
 
+static const char disregard_str[] = "disregard\n";
+static const char finish_str[] = "finish\n";
+
+bool
+is_str_eq(const char *s1, size_t n1, const char *s2, size_t n2)
+{
+	if(n1 != n2) {
+		return false;
+	}
+	return !strncmp(s1, s2, MIN(n1, n2));
+}
+
 int
 control_recv(void *ctl, void *usr, string_t *buf, size_t len)
 {
@@ -545,9 +561,6 @@ control_recv(void *ctl, void *usr, string_t *buf, size_t len)
 	if(!len) {
 		return 0;
 	}
-	static const char disregard_str[] = "disregard";
-	static const char finish_str[] = "finish";
-
 	control_t *control = ctl;
 
 	size_t shift = 0;
@@ -558,14 +571,12 @@ control_recv(void *ctl, void *usr, string_t *buf, size_t len)
 	while( (delim = memchr(scan_start, '\n', len)) ) {
 		size_t line_len = delim - line_start;
 
-		if( !strncmp(line_start, disregard_str, MIN(line_len, sizeof disregard_str - 1)) ) {
-			puts("disregard");
+		if(is_str_eq(line_start, line_len, disregard_str, sizeof disregard_str)) {
 			control->disregard = true;
-		} else if( !strncmp(line_start, finish_str, MIN(line_len, sizeof finish_str - 1)) ) {
-			puts("finish");
+		} else if(is_str_eq(line_start, line_len, finish_str, sizeof finish_str)) {
 			control->finish = true;
-			if(control->end) {
-				control->pid = 0;
+			if(control->write_end) {
+				control->done = true;
 			}
 		} else {
 			fprintf(stderr, "unknown ctl command: '%.*s'\n", (int)line_len, line_start);
@@ -594,9 +605,9 @@ selection_send(void *ctl, void *usr, string_t *buf, size_t len)
 	control_t *control = ctl;
 	selection_send_work_t *work = usr;
 	if(!len) {
-		control->end = true;
+		control->write_end = true;
 		if(control->finish) {
-			control->pid = 0;
+			control->done = true;
 		}
 		return 0;
 	}
@@ -605,15 +616,25 @@ selection_send(void *ctl, void *usr, string_t *buf, size_t len)
 }
 
 void
+child_fail(void *usr)
+{
+	int err = errno;
+	int *control = usr;
+	write(*control, disregard_str, sizeof disregard_str);
+	die("pipe_spawn execvp failed: %s\n", strerror(err));
+}
+
+bool
 handle_command(char *cmd)
 {
 	if(!strcmp("Delete", cmd)) {
 		range_push_mod(&range, "", 0, OP_Replace);
 		dirty = true;
-		return;
+		return true;
 	}
 
 	control_t control = {0};
+	g.child = &control;
 
 	union {
 		struct {
@@ -671,10 +692,11 @@ handle_command(char *cmd)
 	size_t num_w_pipe = sizeof w_pipe / sizeof w_pipe.array[0];
 
 	char *argv[] = {"sh", "-c", cmd, (char*)0};
-	control.pid = pipe_spawn(argv, r_pipe.array, num_r_pipe, w_pipe.array, num_w_pipe);
+	control.pid = pipe_spawn(argv, r_pipe.array, num_r_pipe, w_pipe.array, num_w_pipe,
+			child_fail, &r_pipe.control.child.fd);
 	if(control.pid < 0) {
 		fprintf(stderr, "couldn't spawn command: %s\n", strerror(-control.pid));
-		return;
+		return false;
 	}
 
 	for(size_t i = 0; i < num_w_pipe; i++) {
@@ -684,7 +706,7 @@ handle_command(char *cmd)
 		fcntl(r_pipe.array[i].fd, F_SETFL, O_NONBLOCK);
 	}
 
-	pipe_loop(&control.pid, &control, r_pipe.array, num_r_pipe,
+	pipe_loop(&control.done, &control, r_pipe.array, num_r_pipe,
 			w_pipe.array, num_w_pipe);
 
 	for(size_t i = 0; i < num_w_pipe; i++) {
@@ -698,6 +720,10 @@ handle_command(char *cmd)
 		}
 	}
 
+	if(!control.exited) {
+		waitpid(control.pid, 0, 0);
+	}
+
 	if(!control.disregard) {
 		range_push_mod(&range, r_pipe.selection.work.buf.data,
 				r_pipe.selection.work.buf.nmemb, OP_Replace);
@@ -706,9 +732,12 @@ handle_command(char *cmd)
 		ARR_FREE(&r_pipe.array[i].work.buf);
 	}
 
+	g.child = 0;
+
+	return !control.status && !control.disregard;
 }
 
-void
+bool
 toolbar_click(toolbar_t *bar, int x)
 {
 	double edge = g.view.left_margin;
@@ -717,11 +746,11 @@ toolbar_click(toolbar_t *bar, int x)
 		edge += btn->glyphs.data[btn->glyphs.nmemb - 1].x +
 			g.view.left_margin;
 		if(x < edge) {
-			handle_command(btn->label.data);
-			break;
+			return handle_command(btn->label.data);
 		}
 		edge += g.view.left_margin;
 	}
+	return true;
 }
 
 bool
@@ -736,9 +765,10 @@ mouse_press(XEvent *ev)
 		int corr = 0;
 		if(selbar.visible) {
 			if(nr == (ssize_t)selbar.line) {
-				toolbar_click(&selbar, e->x);
-				selbar.visible = false;
-				dirty = true;
+				if(toolbar_click(&selbar, e->x)) {
+					selbar.visible = false;
+					dirty = true;
+				}
 				return true;
 			} else if(nr > (ssize_t)selbar.line) {
 				corr = -1;
@@ -1136,11 +1166,32 @@ file_read(char *fname, dt_file_t *f)
 	printf("file lines: %zu\n", f->nmemb);
 }
 
+void
+sigchld(int sig, siginfo_t *inf, void *ctx)
+{
+	(void)sig;
+	(void)ctx;
+
+	if(g.child && !g.child->exited && g.child->pid == inf->si_pid) {
+		g.child->exited = true;
+		g.child->status = inf->si_status;
+		if(inf->si_status) {
+			g.child->disregard = true;
+			g.child->done = true;
+		}
+	}
+}
+
 int
 main(int argc, char *argv[])
 {
 	setlocale(LC_CTYPE, "");
 	signal(SIGPIPE, SIG_IGN);
+	sigaction(SIGCHLD, &(struct sigaction) {
+		.sa_sigaction = sigchld,
+		.sa_flags = SA_SIGINFO | SA_NOCLDSTOP
+	}, 0);
+
 	dt_file_insert_line(&file, 0, "", 0);
 
 	if(argc > 1) {

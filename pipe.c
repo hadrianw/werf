@@ -12,9 +12,11 @@
 
 #include "pipe.h"
 
+
 pid_t
 pipe_spawn(char *argv[], pipe_t r_pipe[], size_t num_r_pipe,
-		pipe_t w_pipe[], size_t num_w_pipe)
+		pipe_t w_pipe[], size_t num_w_pipe,
+		void (*child_fail)(void*), void *usr)
 {
 	static const char DEVFD[] = "/dev/fd/";
 
@@ -78,7 +80,7 @@ pipe_spawn(char *argv[], pipe_t r_pipe[], size_t num_r_pipe,
 		}
 
 		execvp(argv[0], argv);
-		die("pipe_spawn execvp failed: %s\n", strerror(errno));
+		child_fail(usr);
 	}
 
 out:
@@ -155,14 +157,14 @@ pipe_recv(int *fd, void *ctl, pipework_t *work)
 }
 
 int
-pipe_loop(pid_t *pid, void *ctl, pipe_t r_pipe[], size_t num_r_pipe,
+pipe_loop(bool *done, void *ctl, pipe_t r_pipe[], size_t num_r_pipe,
 		pipe_t w_pipe[], size_t num_w_pipe)
 {
 	fd_set rfd;
 	fd_set wfd;
 	int max = -1;
 
-	for(; *pid > 0; max = -1) {
+	for(; !*done; max = -1) {
 		FD_ZERO(&wfd);
 		FD_ZERO(&rfd);
 		for(size_t i = 0; i < num_w_pipe; i++) {
