@@ -18,9 +18,9 @@ int fontset_load_font(fontset_t *f, unsigned int index);
 int fontset_init(fontset_t *f, FcPattern *pattern);
 void fontset_free(fontset_t *f);
 
-cairo_font_face_t *cairo_dt_face_create(fontset_t *fontset);
+cairo_font_face_t *font_cairo_font_face_create(fontset_t *fontset);
 
-cairo_status_t dt_face_text_to_glyphs(cairo_scaled_font_t *scaled_font,
+cairo_status_t font_text_to_glyphs(cairo_scaled_font_t *scaled_font,
 		const char *utf8, int utf8_len,
 		cairo_glyph_t **out_glyphs, int *out_num_glyphs,
 		cairo_text_cluster_t **out_clusters, int *out_num_clusters,

@@ -1,38 +1,9 @@
-typedef ARRAY(string_t) dt_file_t;
-
-void dt_file_insert_line(dt_file_t *f, size_t line, char *buf, size_t buf_len);
-void dt_file_free(dt_file_t *f);
+typedef ARRAY(string_t) strarray_t;
 
 typedef struct {
 	size_t line;
 	size_t offset;
-} dt_address_t;
-
-int dt_address_cmp(dt_address_t *a1, dt_address_t *a2);
-
-typedef struct {
-	dt_address_t start;
-	dt_address_t end;
-	dt_file_t *file;
-} dt_range_t;
-
-int dt_range_from_addresses(dt_range_t *rng, dt_address_t *a1, dt_address_t *a2);
-void dt_range_fix_start(dt_range_t *rng);
-void dt_range_fix_end(dt_range_t *rng);
-void dt_range_mod(dt_range_t *rng, char *mod_line, size_t mod_len);
-int dt_range_read(dt_range_t *rng, int fd);
-size_t dt_range_copy(dt_range_t *rng, char *buf, size_t bufsiz);
-
-typedef struct undo_t undo_t;
-struct undo_t {
-	size_t prev;
-	struct {
-		dt_address_t start;
-		dt_address_t end;
-	} src, dst;
-	size_t buf_len;
-	char buf[];
-};
+} address_t;
 
 typedef enum {
 	OP_None,
@@ -40,15 +11,51 @@ typedef enum {
 	OP_Delete,
 	OP_Char,
 	OP_Replace
-} dt_optype_t;
+} optype_t;
+
+typedef struct {
+	size_t prev;
+	optype_t type;
+	struct {
+		address_t start;
+		address_t end;
+	} src, dst;
+	size_t buf_len;
+	char buf[];
+} op_t;
 
 typedef struct {
 	size_t nsiz;
 	size_t asiz;
-	undo_t *first;
+	op_t *first;
 	size_t last;
-	dt_optype_t last_type;
-} undobuf_t;
+} opbuf_t;
 
-void dt_range_push_mod(dt_range_t *rng, char *mod, size_t mod_len, undobuf_t *u, dt_optype_t type);
-void dt_undo(undobuf_t *u, undobuf_t *r, dt_range_t *rng);
+typedef struct {
+	strarray_t content;
+	opbuf_t undobuf;
+	opbuf_t redobuf;
+	bool dirty;
+} file_t;
+
+typedef struct {
+	address_t start;
+	address_t end;
+	file_t *file;
+} range_t;
+
+void file_insert_line(file_t *f, size_t line, char *buf, size_t buf_len);
+void file_free(file_t *f);
+
+int address_cmp(address_t *a1, address_t *a2);
+
+int range_from_addresses(range_t *rng, address_t *a1, address_t *a2);
+void range_fix_start(range_t *rng);
+void range_fix_end(range_t *rng);
+int range_read(range_t *rng, int fd);
+size_t range_copy(range_t *rng, char *buf, size_t bufsiz);
+
+void range_push(range_t *rng, char *mod, size_t mod_len, optype_t type);
+
+void file_undo(range_t *rng);
+void file_redo(range_t *rng);

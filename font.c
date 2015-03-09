@@ -99,14 +99,14 @@ fontset_free(fontset_t *f)
 
 /* cairo user font */
 
-static cairo_user_data_key_t dt_face_key;
+static cairo_user_data_key_t face_key;
 
 static cairo_status_t
-dt_face_init(cairo_scaled_font_t *scaled_font,
+font_init(cairo_scaled_font_t *scaled_font,
 		cairo_t *cr, cairo_font_extents_t *out_extents)
 {
 	fontset_t *fontset = cairo_font_face_get_user_data(
-			cairo_scaled_font_get_font_face(scaled_font), &dt_face_key);
+			cairo_scaled_font_get_font_face(scaled_font), &face_key);
 
 	cairo_set_scaled_font(cr, fontset->cache[0]);
 	cairo_font_extents(cr, out_extents);
@@ -133,7 +133,7 @@ static struct { double x, y; } idx_to_coords[] = {
 	[8] = {1., -.0},
 };
 
-char *ch_to_idx[] = {
+static char *ch_to_idx[] = {
 	['0' - 0x30] = "02860,26",
 	['1' - 0x30] = "428",
 	['2' - 0x30] = "025368",
@@ -172,7 +172,7 @@ char *ch_to_idx[] = {
 	['Z' - 0x30] = "0268"
 };
 
-char *ctrl_to_id[] = {
+static char *ctrl_to_id[] = {
 	[0x00] = "NUL",
 	[0x01] = "SOH",
 	[0x02] = "STX",
@@ -209,7 +209,7 @@ char *ctrl_to_id[] = {
 
 #define SPECIAL_WIDTH 1.5
 
-void
+static void
 basic_text(cairo_t *cr, const char *str, size_t len, double x, double adv, double chw, double chh)
 {
 	for(size_t i = 0; i < len; i++) {
@@ -232,7 +232,7 @@ basic_text(cairo_t *cr, const char *str, size_t len, double x, double adv, doubl
 }
 
 static cairo_status_t
-dt_face_render_glyph(cairo_scaled_font_t *scaled_font,
+font_render_glyph(cairo_scaled_font_t *scaled_font,
 		unsigned long glyph, cairo_t *cr,
 		cairo_text_extents_t *extents)
 {
@@ -280,7 +280,7 @@ dt_face_render_glyph(cairo_scaled_font_t *scaled_font,
 	}
 
 	fontset = cairo_font_face_get_user_data(
-			cairo_scaled_font_get_font_face(scaled_font), &dt_face_key);
+			cairo_scaled_font_get_font_face(scaled_font), &face_key);
 
 	cairo_set_scaled_font(cr, fontset_get_font(fontset, get_fontidx(glyph)));
 
@@ -292,7 +292,7 @@ dt_face_render_glyph(cairo_scaled_font_t *scaled_font,
 }
 
 static uint32_t
-dt_get_char_index(FT_Face face, FT_ULong charcode)
+face_get_char_index(FT_Face face, FT_ULong charcode)
 {
 	FT_UInt idx = FT_Get_Char_Index(face, charcode);
 	if(idx > GLYPHIDX_MAX) {
@@ -303,7 +303,7 @@ dt_get_char_index(FT_Face face, FT_ULong charcode)
 }
 
 static double
-dt_get_kerning(FT_Face face, unsigned long left, unsigned long right)
+face_get_kerning(FT_Face face, unsigned long left, unsigned long right)
 {
 	if(face == NULL || get_fontidx(left) == FONTIDX_MAX ||
 			get_fontidx(right) == FONTIDX_MAX ||
@@ -322,7 +322,7 @@ dt_get_kerning(FT_Face face, unsigned long left, unsigned long right)
 }
 
 static double
-dt_get_advance(FT_Face face, unsigned long glyph)
+face_get_advance(FT_Face face, unsigned long glyph)
 {
 	if(face == NULL || get_fontidx(glyph) == FONTIDX_MAX) {
 		//if(get_glyphidx(glyph) == '\n' || get_glyphidx(glyph) == '\t') {
@@ -359,7 +359,7 @@ utf8glyph(fontset_t *fset, const char *utf8, size_t utf8_len, FT_Face *face, uns
 	}
 
 	*face = cairo_ft_scaled_font_lock_face(fontset_get_font(fset, fontidx));
-	uint32_t glyphidx = dt_get_char_index(*face, codepoint);
+	uint32_t glyphidx = face_get_char_index(*face, codepoint);
 	if(glyphidx == 0) {
 		printf("0: %lu @ %u\n", codepoint, fontidx);
 	}
@@ -368,14 +368,14 @@ utf8glyph(fontset_t *fset, const char *utf8, size_t utf8_len, FT_Face *face, uns
 }
 
 cairo_status_t
-dt_face_text_to_glyphs(cairo_scaled_font_t *scaled_font,
+font_text_to_glyphs(cairo_scaled_font_t *scaled_font,
 		const char *utf8, int utf8_len,
 		cairo_glyph_t **out_glyphs, int *out_num_glyphs,
 		cairo_text_cluster_t **out_clusters, int *out_num_clusters,
 		cairo_text_cluster_flags_t *cluster_flags)
 {
 	fontset_t *fset = cairo_font_face_get_user_data(
-			cairo_scaled_font_get_font_face(scaled_font), &dt_face_key);
+			cairo_scaled_font_get_font_face(scaled_font), &face_key);
 
 	size_t chsiz;
 	int i = 0;
@@ -399,9 +399,9 @@ dt_face_text_to_glyphs(cairo_scaled_font_t *scaled_font,
 		prev_glyph_idx = glyph.index;
 		chsiz = utf8glyph(fset, utf8+off, utf8_len-off, &face, &glyph.index);
 
-		glyph.x += dt_get_kerning(face, prev_glyph_idx, glyph.index);
+		glyph.x += face_get_kerning(face, prev_glyph_idx, glyph.index);
 		glyphs[i] = glyph;
-		glyph.x += dt_get_advance(face, glyph.index);
+		glyph.x += face_get_advance(face, glyph.index);
 
 		if(face != NULL) {
 			cairo_ft_scaled_font_unlock_face( fontset_get_font(
@@ -420,17 +420,17 @@ dt_face_text_to_glyphs(cairo_scaled_font_t *scaled_font,
 }
 
 cairo_font_face_t *
-cairo_dt_face_create(fontset_t *fontset)
+font_cairo_font_face_create(fontset_t *fontset)
 {
 	cairo_font_face_t *uface;
 	cairo_status_t status;
 
 	uface = cairo_user_font_face_create();
-	cairo_user_font_face_set_init_func(uface, dt_face_init);
-	cairo_user_font_face_set_render_glyph_func(uface, dt_face_render_glyph);
-	cairo_user_font_face_set_text_to_glyphs_func(uface, dt_face_text_to_glyphs);
+	cairo_user_font_face_set_init_func(uface, font_init);
+	cairo_user_font_face_set_render_glyph_func(uface, font_render_glyph);
+	cairo_user_font_face_set_text_to_glyphs_func(uface, font_text_to_glyphs);
 
-	status = cairo_font_face_set_user_data(uface, &dt_face_key, fontset,
+	status = cairo_font_face_set_user_data(uface, &face_key, fontset,
 			(cairo_destroy_func_t)fontset_free);
 	if(status) {
 		fontset_free(fontset);

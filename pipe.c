@@ -12,109 +12,122 @@
 
 #include "pipe.h"
 
-
-pid_t
-pipe_spawn(char *argv[], pipe_t r_pipe[], size_t num_r_pipe,
-		pipe_t w_pipe[], size_t num_w_pipe,
-		void (*child_fail)(void*), void *usr)
+int
+pipe_init(pipe_t *p, size_t num, int write)
 {
-	static const char DEVFD[] = "/dev/fd/";
+	int err = 0;
+	size_t n = 0;
+	write = !!write;
 
-	pid_t pid = -1;
-	size_t ri = 0;
-	size_t wi = 0;
-
-	for(; ri < num_r_pipe; ri++) {
+	for(; n < num; n++) {
 		int fds[2];
 		if(pipe(fds) < 0) {
-			pid = -errno;
-			goto out;
+			err = errno;
+			break;
 		}
-		r_pipe[ri].fd = fds[0];
-		r_pipe[ri].child.fd = fds[1];
+		p[n].fd = fds[write];
+		p[n].child.fd = fds[!write];
 	}
-	for(; wi < num_w_pipe; wi++) {
-		int fds[2];
-		if(pipe(fds) < 0) {
-			pid = -errno;
-			goto out;
+	if(err) {
+		for(size_t i = 0; i <= n; i++) {
+			close(p[i].fd);
+			close(p[i].child.fd);
 		}
-		w_pipe[wi].fd = fds[1];
-		w_pipe[wi].child.fd = fds[0];
+		errno = err;
+		return -1;
 	}
-
-	pid = fork();
-	if(pid < 0) {
-		pid = -errno;
-		goto out;
-	}
-
-	if(pid == 0) {
-		for(size_t i = 0; i < num_w_pipe; i++) {
-			close(w_pipe[i].fd);
-		}
-		for(size_t i = 0; i < num_r_pipe; i++) {
-			close(r_pipe[i].fd);
-		}
-
-		dup2(w_pipe[0].child.fd, STDIN_FILENO);
-		dup2(r_pipe[0].child.fd, STDOUT_FILENO);
-
-		setenv("TERM", "dumb", 1);
-
-		char buf[sizeof(DEVFD) + (sizeof(int) * 5 + 1) / 2];
-		strcpy(buf, DEVFD);
-		char *bufend = buf + sizeof DEVFD - 1;
-
-		for(size_t i = 0; i < num_w_pipe; i++) {
-			if(w_pipe[i].child.name) {
-				sprintf(bufend, "%d", w_pipe[i].child.fd);
-				setenv(w_pipe[i].child.name, buf, 1);
-			}
-		}
-		for(size_t i = 0; i < num_r_pipe; i++) {
-			if(r_pipe[i].child.name) {
-				sprintf(bufend, "%d", r_pipe[i].child.fd);
-				setenv(r_pipe[i].child.name, buf, 1);
-			}
-		}
-
-		execvp(argv[0], argv);
-		child_fail(usr);
-	}
-
-out:
-	for(size_t i = 0; i < wi; i++) {
-		if(pid < 0) {
-			close(w_pipe[i].fd);
-		}
-		close(w_pipe[i].child.fd);
-	}
-	for(size_t i = 0; i < ri; i++) {
-		if(pid < 0) {
-			close(r_pipe[i].fd);
-		}
-		close(r_pipe[i].child.fd);
-	}
-	return pid;
+	return 0;
 }
 
-static void
-pipe_send(int *fd, void *ctl, pipework_t *work)
+int
+pipe_set_env(pipe_t *p, size_t num)
 {
-	if(work->handler) {
-		work->handler(ctl, work->usr, &work->buf, 1);
+	#define DEVFD "/dev/fd/"
+	static char buf[sizeof(DEVFD) + (sizeof(int) * 5 + 1) / 2] = DEVFD;
+	static char *bufend = buf + sizeof(DEVFD) - 1;
+
+	for(size_t i = 0; i < num; i++) {
+		if(p[i].child.name) {
+			if(sprintf(bufend, "%d", p[i].child.fd) < 0 ||
+			setenv(p[i].child.name, buf, 1) < 0) {
+				return -1;
+			}
+		}
+	}
+	return 0;
+}
+
+int
+pipe_cmd_exec(pipe_t *p, size_t num, char *argv[])
+{
+	for(size_t i = 0; i < num; i++) {
+		close(p[i].fd);
+	}
+
+	if(setenv("TERM", "dumb", 1) < 0 ||
+	pipe_set_env(p, num) < 0) {
+		return -1;
+	}
+
+	execvp(argv[0], argv);
+	return -1;
+}
+
+int
+pipe_select(control_t *control, fd_set *rfd, fd_set *wfd,
+		pipe_t *r, size_t num_r, pipe_t *w, size_t num_w)
+{
+	while(!control->pipe.done) {
+		int max = -1;
+
+		FD_ZERO(rfd);
+		FD_ZERO(wfd);
+
+		for(size_t i = 0; i < num_r; i++) {
+			if(r[i].fd >= 0) {
+				FD_SET(r[i].fd, rfd);
+				max = MAX(max, r[i].fd);
+			}
+		}
+		for(size_t i = 0; i < num_w; i++) {
+			if(w[i].fd >= 0) {
+				FD_SET(w[i].fd, wfd);
+				max = MAX(max, w[i].fd);
+			}
+		}
+		if(max < 0) {
+			return 0;
+		}
+
+		if(pselect(max+1, rfd, wfd, NULL, NULL, NULL) < 0) {
+			if(errno == EINTR) {
+				continue;
+			}
+			control->error = 1;
+			return 0;
+		}
+		return 1;
+	}
+	return 0;
+}
+
+void
+pipe_send(pipe_t *p, control_t *ctl)
+{
+	if(p->handler) {
+		p->handler(ctl, p->usr, &p->buf, 1);
 	}
 
 	ssize_t len;
-	if(work->buf.nmemb == 0 ||
-			( (len = write(*fd, work->buf.data, work->buf.nmemb)) < 0 &&
-			errno == EPIPE )) {
-		if(work->handler) {
-			work->handler(ctl, work->usr, &work->buf, 0);
+	if(p->buf.nmemb == 0 ||
+			( (len = write(p->fd, p->buf.data, p->buf.nmemb)) < 0 &&
+			(errno == EPIPE || errno == EAGAIN) )) {
+		if(p->handler) {
+			p->handler(ctl, p->usr, &p->buf, 0);
 		}
-		close(*fd);
-		*fd = -1;
+		close(p->fd);
+		p->fd = -1;
+		return;
 	}
 
 	if(len < 0) {
@@ -122,19 +135,19 @@ pipe_send(int *fd, void *ctl, pipework_t *work)
 		return;
 	}
 
-	ARR_FRAG_SHIFT(&work->buf, 0, work->buf.nmemb, -len);
-	work->buf.nmemb -= len;
+	ARR_FRAG_SHIFT(&p->buf, 0, p->buf.nmemb, -len);
+	p->buf.nmemb -= len;
 }
 
-static void
-pipe_recv(int *fd, void *ctl, pipework_t *work)
+void
+pipe_recv(pipe_t *p, control_t *ctl)
 {
 	enum { PIPE_BUF_SIZE = BUFSIZ * 2 };
 
-	size_t start = work->buf.nmemb;
-	ARR_EXTEND(&work->buf, PIPE_BUF_SIZE);
+	size_t start = p->buf.nmemb;
+	ARR_EXTEND(&p->buf, PIPE_BUF_SIZE);
 
-	ssize_t len = read(*fd, work->buf.data + start, PIPE_BUF_SIZE);
+	ssize_t len = read(p->fd, p->buf.data + start, PIPE_BUF_SIZE);
 
 	if(len < 0) {
 		if(errno != EAGAIN) {
@@ -144,73 +157,15 @@ pipe_recv(int *fd, void *ctl, pipework_t *work)
 		len = 0;
 	}
 
-	work->buf.nmemb = start + len;
+	p->buf.nmemb = start + len;
 
-	if(work->handler) {
-		work->handler(ctl, work->usr, &work->buf, len);
+	if(p->handler) {
+		p->handler(ctl, p->usr, &p->buf, len);
 	}
 
 	if(len == 0) {
-		close(*fd);
-		*fd = -1;
+		close(p->fd);
+		p->fd = -1;
 	}
 }
 
-int
-pipe_loop(bool *done, void *ctl, pipe_t r_pipe[], size_t num_r_pipe,
-		pipe_t w_pipe[], size_t num_w_pipe)
-{
-	fd_set rfd;
-	fd_set wfd;
-	int max = -1;
-
-	for(; !*done; max = -1) {
-		FD_ZERO(&wfd);
-		FD_ZERO(&rfd);
-		for(size_t i = 0; i < num_w_pipe; i++) {
-			if(w_pipe[i].fd >= 0) {
-				FD_SET(w_pipe[i].fd, &wfd);
-				max = MAX(max, w_pipe[i].fd);
-			}
-		}
-		for(size_t i = 0; i < num_r_pipe; i++) {
-			if(r_pipe[i].fd >= 0) {
-				FD_SET(r_pipe[i].fd, &rfd);
-				max = MAX(max, r_pipe[i].fd);
-			}
-		}
-		if(max < 0) {
-			break;
-		}
-		if(pselect(max+1, &rfd, &wfd, NULL, NULL, NULL) < 0) {
-			if(errno == EINTR) {
-				continue;
-			}
-			return -1;
-		}
-
-		for(size_t i = 0; i < num_w_pipe; i++) {
-			if(w_pipe[i].fd >= 0 && FD_ISSET(w_pipe[i].fd, &wfd)) {
-				pipe_send(&w_pipe[i].fd, ctl, &w_pipe[i].work);
-				break;
-			}
-		}
-		for(size_t i = 0; i < num_r_pipe; i++) {
-			if(r_pipe[i].fd >= 0 && FD_ISSET(r_pipe[i].fd, &rfd)) {
-				pipe_recv(&r_pipe[i].fd, ctl, &r_pipe[i].work);
-				break;
-			}
-		}
-	}
-	bool repeat = max >= 0;
-	while(repeat) {
-		repeat = false;
-		for(size_t i = 0; i < num_r_pipe; i++) {
-			if(r_pipe[i].fd >= 0) {
-				pipe_recv(&r_pipe[i].fd, ctl, &r_pipe[i].work);
-				repeat = true;
-			}
-		}
-	}
-	return 0;
-}

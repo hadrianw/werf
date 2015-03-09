@@ -1,6 +1,7 @@
-#include <sys/types.h>
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <string.h>
+#include <sys/types.h>
 
 #define ABS(a) ((a) < (0) ? -(a) : (a))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -12,6 +13,15 @@
 #define DIEIF(x) dieif(__FILE__, __LINE__, __FUNCTION__, #x, (x))
 
 typedef unsigned char uchar;
+
+static inline bool
+is_str_eq(const char *s1, size_t n1, const char *s2, size_t n2)
+{
+	if(n1 != n2) {
+		return false;
+	}
+	return !strncmp(s1, s2, MIN(n1, n2));
+}
 
 static inline size_t
 next_pow2(size_t n)
