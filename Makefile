@@ -5,11 +5,9 @@ CFLAGS = -std=c1x $(OPTIM) -Wall -Wextra -pedantic -Werror \
 	-Wno-missing-braces \
 	`freetype-config --cflags` \
 	-D_POSIX_C_SOURCE=200809L
-LDFLAGS = -flto -lrt -lcairo -lX11 `freetype-config --libs` -lfontconfig
+LDFLAGS = -lrt -lcairo -lX11 `freetype-config --libs` -lfontconfig
 
 CC = gcc
-GDB = gdb -batch -ex run -ex bt
-VALGRIND = valgrind --leak-check=full --suppressions=valgrind.supp
 
 SRC = \
 	util.c \
@@ -21,10 +19,10 @@ SRC = \
 	view.c \
 	draw.c \
 	window.c \
-	drawtext.c
+	werf.c
 OBJ = $(SRC:.c=.o)
 
-all: drawtext
+all: werf
 
 .c.o:
 	@echo CC $<
@@ -38,25 +36,13 @@ utf.o: utf.h
 font.o: font.h utf.h
 edit.o: edit.h utf.h array.h
 pipe.c: pipe.h array.h
-drawtext.o: pipe.h edit.h font.h array.h
+werf.o: pipe.h edit.h font.h array.h
 
-drawtext: $(OBJ)
+werf: $(OBJ)
 	@echo CC -o $@
 	@$(CC) -o $@ $(OBJ) $(LDFLAGS)
 
 clean:
-	rm -f drawtext $(OBJ)
+	rm -f werf $(OBJ)
 
-run: drawtext
-	./$<
-
-gdb: drawtext
-	$(GDB) ./$<
-
-valgrind: drawtext
-	$(VALGRIND) ./$< arch/fc-drawtext.c
-
-valgrind-gensupp: drawtext
-	$(VALGRIND) --gen-suppressions=all ./$< arch/fc-drawtext.c
-
-.PHONY: all clean run gdb valgrind valgrind-gensupp
+.PHONY: all clean

@@ -323,7 +323,7 @@ main(int argc, char *argv[])
 	cairo_get_font_matrix(win.cr, &mat);
 	cairo_set_font_size(win.cr, mat.xx * s);
 
-	char labels[] = "Cut\nCopy\nPaste\nDelete\nFind\nOpen\nExec\n+\n...\n";
+	char labels[] = "Cut\nCopy\nPaste\nDelete\nFind\n./Open\nExec\nurxvt\ngrep std | grep \"<.*>\" -o\n+\n...\n";
 	char *lbl = labels;
 	for(char *next; (next = strchr(lbl, '\n')) != NULL; lbl = next) {
 		next++;
