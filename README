@@ -1,0 +1,67 @@
+werf - text editor and graphical shell
+--------------------------------------
+Werf is text editor inspired by Acme text editor from the Plan 9 from Bell Labs.
+
+Requirements
+------------
+libX11, libcairo, libfreetype, libfontconfig
+
+Usage
+-----
+This is mouse driven text editor. You can select text only with mouse.
+
+Keybindings:
+- Default X input method for text entry.
+- Enter for new line.
+- Same as in WIMP interfaces:
+  - Arrows
+  - Home/End
+  - Page Up/Down
+  - Backspace/Delete
+- F2 - undo
+- F3 - redo
+
+Features
+--------
+Unlimited undo. Simple integration with shell.
+
+External processes are spawned with follwing pipes:
+- selection_R
+- selection_W
+- control_W
+- before_selection_W
+- after_selection_W
+- before_selection_R
+- after_selection_R
+- highlight_W
+- after_view_top_R
+- before_view_bottom_R
+- toolbar_R
+- toolbar_W
+They are exposed via environment variables.
+
+TODO
+----
+- proper readme
+- top toolbar with: Read, Write, Undo, Redo, Find, Paste
+- proper tab stops
+- line wrapping
+- smooth scrolling
+- highlight for Find
+- keeping indentation level (copy leading white space)
+- drag and drop:
+  - files
+  - selection
+- visual scroll bar with outline - external process?
+- split backend/frontend for ssh tunneling
+- selection extending
+
+After 1.0:
+- visual cursors for long running processes
+  - file name shown
+  - termination with backspace/delete
+- autocompletion?
+  - toolbar from external command
+- touch events
+- elastic tabs?
+- undo/redo as external command?

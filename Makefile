@@ -1,6 +1,6 @@
-OPTIM = -g -O0
-#OPTIM = -O2
-CFLAGS = -std=c1x $(OPTIM) -Wall -Wextra -pedantic -Werror \
+#OPTIM = -g -O0 -Werror
+OPTIM = -O2
+CFLAGS = -std=c1x $(OPTIM) -Wall -Wextra -pedantic \
 	-Wno-missing-field-initializers \
 	-Wno-missing-braces \
 	`freetype-config --cflags` \
