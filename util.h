@@ -2,6 +2,9 @@
 #include <stddef.h>
 #include <string.h>
 #include <sys/types.h>
+#include <assert.h>
+
+#define TEST(X) void TEST_##X()
 
 #define ABS(a) ((a) < (0) ? -(a) : (a))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -75,7 +78,7 @@ void *xcalloc(size_t nmemb, size_t size);
 void *xmalloc(size_t nmemb, size_t size);
 void *xrealloc(void *ptr, size_t nmemb, size_t size);
 void *reallocdup(void *heap, size_t nnew, const void *stack, size_t nstack, size_t size);
-void *memshift(ssize_t shift, void *src, size_t nmemb, size_t size);
+void memshift(ssize_t shift, void *src, size_t nmemb, size_t size);
 
 void die(const char *fmt, ...);
 void dieif(const char *file, int line, const char *func, const char *msg, int die_req);

@@ -1,5 +1,5 @@
-#OPTIM = -g -O0 -Werror
-OPTIM = -O2
+OPTIM = -g -O0 -Werror
+#OPTIM = -O2
 CFLAGS = -std=c1x $(OPTIM) -Wall -Wextra -pedantic \
 	-Wno-missing-field-initializers \
 	-Wno-missing-braces \
@@ -22,11 +22,11 @@ SRC = \
 	werf.c
 OBJ = $(SRC:.c=.o)
 
-all: werf
+all: werf test-werf
 
 .c.o:
 	@echo CC $<
-	@$(CC) -c $(CFLAGS) $<
+	@$(CC) -c $(CFLAGS) $< -o $@
 
 $(OBJ): util.h Makefile
 window.o: window.h draw.h view.h
@@ -38,11 +38,24 @@ edit.o: edit.h utf.h array.h
 pipe.c: pipe.h array.h
 werf.o: pipe.h edit.h font.h array.h
 
-werf: $(OBJ)
+test/main.c: $(OBJ) Makefile
+	@echo generate test objects
+	@mkdir -p test
+	@cp $(OBJ) test
+	@objcopy -N main test/werf.o
+	@sh gen-test.sh $(OBJ) > test/main.c
+test/main.o: test/main.c
+test-werf: test/main.o test/werf.o
+	@echo CC -o $@
+	@cd test && $(CC) -o ../$@ main.o $(OBJ) $(LDFLAGS)
+	@echo testing
+	@./test-werf
+
+werf: $(OBJ) test-werf
 	@echo CC -o $@
 	@$(CC) -o $@ $(OBJ) $(LDFLAGS)
 
 clean:
-	rm -f werf $(OBJ)
+	rm -f werf test-werf $(OBJ)
 
 .PHONY: all clean
