@@ -23,7 +23,7 @@ is_str_eq(const char *s1, size_t n1, const char *s2, size_t n2)
 	if(n1 != n2) {
 		return false;
 	}
-	return !strncmp(s1, s2, MIN(n1, n2));
+	return !memcmp(s1, s2, MIN(n1, n2));
 }
 
 static inline size_t
