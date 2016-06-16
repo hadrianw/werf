@@ -135,25 +135,24 @@ range_mod_line(range_t *rng, char *mod_line, size_t mod_len)
 }
 
 TEST(range_mod_line) {
+	file_t file = { 0 };
+	file_insert_line(&file, 0, "123\n", 4);
+	file_insert_line(&file, 1, "456\n", 4);
+	range_t rng = {
+		{0, 1}, {1, 2}, &file
+	};
 	{
-		file_t file = { 0 };
-		file_insert_line(&file, 0, "123\n", 4);
-		file_insert_line(&file, 1, "456\n", 4);
-		range_t rng = {
-			{0, 1}, {1, 2}, &file
-		};
-		{
 		char mod_line[] = "abc\n";
 		range_mod_line(&rng, mod_line, sizeof(mod_line)-1);
-		} {
+	} {
 		char mod_line[] = "def";
 		range_mod_line(&rng, mod_line, sizeof(mod_line)-1);
-		}
-		assert(is_str_eq(file.content.data[0].data, file.content.data[0].nmemb,
-			"1abc\n", 5));
-		assert(is_str_eq(file.content.data[1].data, file.content.data[0].nmemb,
-			"def6\n", 5));
 	}
+	assert(is_str_eq(file.content.data[0].data, file.content.data[0].nmemb,
+		"1abc\n", 5));
+	assert(is_str_eq(file.content.data[1].data, file.content.data[0].nmemb,
+		"def6\n", 5));
+	file_free(&file);
 }
 
 static void
