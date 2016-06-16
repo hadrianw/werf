@@ -22,7 +22,7 @@ SRC = \
 	werf.c
 OBJ = $(SRC:.c=.o)
 
-all: werf test-werf
+all: werf
 
 .c.o:
 	@echo CC $<
@@ -45,17 +45,18 @@ test/main.c: $(OBJ) Makefile
 	@objcopy -N main test/werf.o
 	@sh gen-test.sh $(OBJ) > test/main.c
 test/main.o: test/main.c
-test-werf: test/main.o test/werf.o
-	@echo CC -o $@
-	@cd test && $(CC) -o ../$@ main.o $(OBJ) $(LDFLAGS)
+test-werf.passed: test/main.o test/werf.o
+	@echo CC -o test-werf
+	@cd test && $(CC) -o ../test-werf main.o $(OBJ) $(LDFLAGS)
 	@echo testing
-	@./test-werf
+	valgrind --quiet --leak-check=full --error-exitcode=1 ./test-werf
+	mv test-werf test-werf.passed
 
-werf: $(OBJ) test-werf
+werf: $(OBJ) test-werf.passed
 	@echo CC -o $@
 	@$(CC) -o $@ $(OBJ) $(LDFLAGS)
 
 clean:
-	rm -f werf test-werf $(OBJ)
+	rm -f werf test-werf test-werf.passed $(OBJ)
 
 .PHONY: all clean
