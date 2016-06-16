@@ -212,17 +212,12 @@ range_read(range_t *rng, int fd)
 size_t
 range_copy(range_t *rng, char *buf, size_t bufsiz)
 {
-	if(!bufsiz) {
-		return 0;
-	}
-
 	size_t off = rng->start.offset;
 	size_t siz;
 	size_t len = 0;
+	bool normal = true;
 
-	rng->start.offset = rng->end.offset;
-
-	do {
+	for(; len < bufsiz && rng->start.line <= rng->end.line; ) {
 		string_t *line = &rng->file->content.data[rng->start.line];
 		if(rng->start.line == rng->end.line) {
 			siz = rng->end.offset - off;
@@ -232,16 +227,54 @@ range_copy(range_t *rng, char *buf, size_t bufsiz)
 		if(len + siz > bufsiz) {
 			siz = bufsiz - len;
 			rng->start.offset = off + siz;
-		} else if(rng->start.line != rng->end.line) {
-			rng->start.line++;
+			normal = false;
 		}
+
 		memcpy(buf + len, line->data + off, siz);
 		len += siz;
 		off = 0;
-	} while(len < bufsiz && rng->start.line < rng->end.line);
+
+		if(normal) {
+			if(rng->start.line != rng->end.line) {
+				rng->start.line++;
+			} else {
+				rng->start.offset = rng->end.offset;
+				break;
+			}
+		}
+	}
+
 	return len;
 }
 
+TEST(range_copy) {
+	{
+		file_t file = { 0 };
+		file_insert_line(&file, 0, "123\n", 4);
+		file_insert_line(&file, 1, "456\n", 4);
+		range_t rng = {
+			{0, 1}, {1, 2}, &file
+		};
+		char buf[BUFSIZ];
+		size_t len = range_copy(&rng, buf, sizeof(buf));
+		assert(is_str_eq(buf, len, "23\n45", 5));
+		assert(!address_cmp(&rng.start, &rng.end));
+		file_free(&file);
+	} {
+		string_t lines[] = {
+			{.data = "123\n", .nmemb = 4 },
+			{.data = "456\n", .nmemb = 4 }
+		};
+		file_t file = { .content.data = lines, .content.nmemb = 2 };
+		range_t rng = {
+			{0, 1}, {1, 2}, &file
+		};
+		char buf[2];
+		size_t len = range_copy(&rng, buf, sizeof(buf));
+		assert(is_str_eq(buf, len, "23", 2));
+		assert(!address_cmp(&rng.start, &(address_t){0, 3}));
+	}
+}
 
 static void
 opbuf_extend(opbuf_t *u, size_t ext)
