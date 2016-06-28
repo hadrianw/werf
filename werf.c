@@ -28,6 +28,7 @@
 #include "view.h"
 #include "window.h"
 #include "pipe.h"
+#include "command.h"
 
 static control_t *g_control;
 
@@ -134,6 +135,20 @@ builtin_command(char *cmd)
 {
 	if(!strcmp("Delete", cmd)) {
 		command_delete(&win.view_wrap->view);
+		return 1;
+	} else if(!strcmp("Read", cmd)) {
+		return 1;
+	} else if(!strcmp("Write", cmd)) {
+		return 1;
+	} else if(!strcmp("Undo", cmd)) {
+		command_undo(&win.view_wrap->view);
+		return 1;
+	} else if(!strcmp("Redo", cmd)) {
+		command_redo(&win.view_wrap->view);
+		return 1;
+	} else if(!strcmp("+", cmd)) {
+		return 1;
+	} else if(!strcmp("...", cmd)) {
 		return 1;
 	}
 
