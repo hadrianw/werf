@@ -130,11 +130,21 @@ selection_send(control_t *control, void *usr, string_t *buf, size_t len)
 }
 
 int
-handle_command(char *cmd)
+builtin_command(char *cmd)
 {
 	if(!strcmp("Delete", cmd)) {
-		range_push(&win.view_wrap->view.range, "", 0, OP_Replace);
-		return 0;
+		command_delete(&win.view_wrap->view);
+		return 1;
+	}
+
+	return 0;
+}
+
+int
+handle_command(char *cmd)
+{
+	if(builtin_command(cmd)) {
+		return 1;
 	}
 
 	control_t control = {0};
