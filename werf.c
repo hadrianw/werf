@@ -242,6 +242,7 @@ handle_command(char *cmd)
 	}
 
 	if(control.pipe.disregard) {
+		// FIXME: we may still want to hide toolbar
 		return 0;
 	}
 	return 1;
@@ -253,6 +254,7 @@ out_err:
 			close(pipes_all[i].fd);
 		}
 	}
+	// FIXME: what about this error?
 	return -1;
 }
 

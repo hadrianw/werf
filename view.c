@@ -245,6 +245,7 @@ toolbar_click(toolbar_t *bar, view_t *v, int x)
 		edge += v->left_margin + btn->glyphs.data[btn->glyphs.nmemb - 1].x +
 				v->left_margin;
 		if(x < edge) {
+			// FIXME: what if I don't want to hide toolbar?
 			return handle_command(btn->label.data);
 		}
 	}
@@ -434,7 +435,9 @@ view_mouse_press(view_t *v, unsigned int btn, int x, int y)
 		int corr = 0;
 		if(v->selbar_wrap.visible) {
 			if(nr == (ssize_t)v->selbar_wrap.line) {
+				// FIXME: what if I don't want to hide toolbar?
 				if(toolbar_click(&v->selbar_wrap.bar, v, x)) {
+					// FIXME: should I call view_hide_toolbar?
 					v->selbar_wrap.visible = false;
 					v->range.file->dirty = true;
 				}
