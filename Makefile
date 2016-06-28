@@ -35,7 +35,7 @@ view.o: view.h
 utf.o: utf.h
 font.o: font.h utf.h
 edit.o: edit.h utf.h array.h
-pipe.c: pipe.h array.h
+pipe.o: pipe.h array.h
 werf.o: pipe.h edit.h font.h array.h
 
 test/main.c: $(OBJ) Makefile
