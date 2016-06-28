@@ -44,8 +44,7 @@ draw_line(cairo_t *cr, view_t *v, size_t nr)
 
 	cairo_save(cr);
 
-	double yoff = v->line_height * (nr - v->start);
-	cairo_translate(cr, 0, yoff);
+	cairo_translate(cr, 0, view_line_to_y(v, nr));
 
 	double sel_s = 0;
 	double sel_e = 0;
@@ -96,12 +95,11 @@ draw_button(cairo_t *cr, view_t *v, button_t *btn)
 }
 
 void
-draw_toolbar(cairo_t *cr, view_t *v, toolbar_wrap_t *bar_wrap)
+draw_toolbar(cairo_t *cr, view_t *v, toolbar_t *bar, double y)
 {
 	cairo_save(cr);
 
-	double yoff = v->line_height * (bar_wrap->line - v->start);
-	cairo_translate(cr, 0, yoff);
+	cairo_translate(cr, 0, y);
 
 	cairo_save(cr);
 	cairo_set_source_rgb(cr, 0.875, 0.75, 0.5);
@@ -126,8 +124,8 @@ draw_toolbar(cairo_t *cr, view_t *v, toolbar_wrap_t *bar_wrap)
 	cairo_get_font_matrix(cr, &mat);
 	cairo_set_font_size(cr, mat.xx * s);
 
-	for(size_t i = 0; i < bar_wrap->bar.buttons.nmemb; i++) {
-		draw_button(cr, v, &bar_wrap->bar.buttons.data[i]);
+	for(size_t i = 0; i < bar->buttons.nmemb; i++) {
+		draw_button(cr, v, &bar->buttons.data[i]);
 	}
 
 	cairo_restore(cr);
@@ -145,11 +143,11 @@ draw_view(cairo_t *cr, view_t *v)
 	size_t i = start;
 	for(; i <= end; i++) {
 		if(v->selbar_wrap.visible && i == v->selbar_wrap.line) {
-			draw_toolbar(cr, v, &v->selbar_wrap);
+			draw_toolbar(cr, v, &v->selbar_wrap.bar, view_line_to_y(v, v->selbar_wrap.line));
 		}
 		draw_line(cr, v, i);
 	}
 	if(v->selbar_wrap.visible && i == v->selbar_wrap.line) {
-		draw_toolbar(cr, v, &v->selbar_wrap);
+		draw_toolbar(cr, v, &v->selbar_wrap.bar, view_line_to_y(v, v->selbar_wrap.line));
 	}
 }

@@ -89,6 +89,11 @@ view_address_to_x(view_t *v, address_t *adr) {
 	return v->left_margin + gl->data[gl->offset_to_glyph[adr->offset]].x;
 }
 
+double
+view_line_to_y(view_t *v, size_t nr) {
+	return v->line_height * (nr - v->start);
+}
+
 void
 view_move_address_line(view_t *v, address_t *adr, int move)
 {

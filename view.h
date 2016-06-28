@@ -57,6 +57,7 @@ void view_set_start(view_t *v, size_t nr);
 glyphs_t *view_get_glyphs(view_t *v, size_t nr);
 ssize_t view_clamp_start(view_t *v, ssize_t nr);
 double view_address_to_x(view_t *v, address_t *adr);
+double view_line_to_y(view_t *v, size_t nr);
 size_t view_x_to_offset(view_t *v, size_t nr, int x);
 void view_xy_to_address(view_t *v, int x, int y, address_t *adr);
 ssize_t view_y_to_line(view_t *v, int y);
