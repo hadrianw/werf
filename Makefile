@@ -13,6 +13,7 @@ SRC = \
 	util.c \
 	array.c \
 	pipe.c \
+	command.c \
 	utf.c \
 	edit.c \
 	font.c \
@@ -36,6 +37,7 @@ utf.o: utf.h
 font.o: font.h utf.h
 edit.o: edit.h utf.h array.h
 pipe.o: pipe.h array.h
+command.o: command.h array.h view.h edit.h
 werf.o: pipe.h edit.h font.h array.h
 
 test/main.c: $(OBJ) Makefile

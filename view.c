@@ -26,6 +26,7 @@
 #include "edit.h"
 #include "font.h"
 #include "view.h"
+#include "command.h"
 
 ssize_t
 view_clamp_start(view_t *v, ssize_t nr)
@@ -324,81 +325,47 @@ view_keybinds(view_t *v, KeySym keysym)
 {
 	switch(keysym) {
 	case XK_F2:
-		file_undo(&v->range);
-		v->last_x = view_address_to_x(v, &v->range.start);
+		command_undo(v);
 		break;
 	case XK_F3:
-		file_redo(&v->range);
-		v->last_x = view_address_to_x(v, &v->range.start);
+		command_redo(v);
 		break;
 	case XK_Page_Up:
-		view_move_start(v, -v->nmemb);
+		command_page_up(v);
 		break;
 	case XK_Page_Down:
-		view_move_start(v, v->nmemb);
+		command_page_down(v);
 		break;
 	case XK_Home:
-		v->range.start.offset = 0;
-		v->range.end.offset = v->range.start.offset;
-		v->last_x = view_address_to_x(v, &v->range.start);
+		command_home(v);
 		break;
 	case XK_End: {
-		glyphs_t *gl = view_get_glyphs(v, v->range.start.line);
-		v->range.start.offset = gl->glyph_to_offset[gl->nmemb - 1];
-		v->range.end.offset = v->range.start.offset;
-		v->last_x = view_address_to_x(v, &v->range.start);
+		command_end(v);
 		break;
 	}
 	case XK_BackSpace: {
-		optype_t type = OP_Replace;
-		if(!address_cmp(&v->range.start, &v->range.end)) {
-			view_move_address(v, &v->range.start, -1);
-			type = OP_BackSpace;
-		}
-		range_push(&v->range, "", 0, type);
-		v->last_x = view_address_to_x(v, &v->range.start);
+		command_backspace(v);
 		break;
 	}
 	case XK_Delete: {
-		optype_t type = OP_Replace;
-		if(!address_cmp(&v->range.start, &v->range.end)) {
-			view_move_address(v, &v->range.end, 1);
-			type = OP_Delete;
-		}
-		range_push(&v->range, "", 0, type);
-		v->last_x = view_address_to_x(v, &v->range.start);
+		command_delete(v);
 		break;
 	}
 	case XK_Return: /* FALL THROUGH */
 	case XK_KP_Enter:
-		range_push(&v->range, "\n", 1, OP_Char);
-		v->last_x = view_address_to_x(v, &v->range.start);
+		command_new_line(v);
 		break;
 	case XK_Left:
-		if(!address_cmp(&v->range.start, &v->range.end)) {
-			view_move_address(v, &v->range.start, -1);
-		}
-		v->range.end = v->range.start;
-		v->last_x = view_address_to_x(v, &v->range.start);
+		command_left(v);
 		break;
 	case XK_Right:
-		if(!address_cmp(&v->range.start, &v->range.end)) {
-			view_move_address(v, &v->range.start, 1);
-		}
-		v->range.end = v->range.start;
-		v->last_x = view_address_to_x(v, &v->range.start);
+		command_right(v);
 		break;
 	case XK_Up:
-		if(!address_cmp(&v->range.start, &v->range.end)) {
-			view_move_address_line(v, &v->range.start, -1);
-		}
-		v->range.end = v->range.start;
+		command_up(v);
 		break;
 	case XK_Down:
-		if(!address_cmp(&v->range.start, &v->range.end)) {
-			view_move_address_line(v, &v->range.start, 1);
-		}
-		v->range.end = v->range.start;
+		command_down(v);
 		break;
 	default:
 		return false;
