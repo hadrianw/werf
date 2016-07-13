@@ -2,7 +2,7 @@
 
 Werf is mouse driven experimental text editor inspired by Acme, text editor from the Plan 9 from Bell Labs.
 
-![werf-0](https://cloud.githubusercontent.com/assets/154291/16540376/296a9b72-4063-11e6-9a12-79dccc3e365f.png)
+<img alt="werf-0" src="https://cloud.githubusercontent.com/assets/154291/16819441/bf02f750-494c-11e6-96b1-79deae6b8694.png" width="581" height="364">
 
 ## Requirements
 
