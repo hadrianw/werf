@@ -13,7 +13,7 @@
 #define DEFAULT(a, b) (a) = (a) ? (a) : (b)
 #define BETWEEN(x, a, b) ((a) <= (x) && (x) <= (b))
 
-#define DIEIF(x) dieif(__FILE__, __LINE__, __FUNCTION__, #x, (x))
+#define DIEIF(x) dieif(__FILE__, __LINE__, __func__, #x, (x))
 
 typedef unsigned char uchar;
 
