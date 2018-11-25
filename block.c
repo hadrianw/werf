@@ -130,6 +130,23 @@ buffer_read_fd(buffer_t *buffer, range_t *rng, int fd)
 	return buffer_read_blocks(buffer, rng, blk, LEN(blk), len);
 }
 
+static size_t
+count_chr(const void *buf, int c, size_t len)
+{
+	size_t n = 0;
+	const void *orig_buf = buf;
+	const void *next;
+	for(;;) {
+		next = memchr(buf, c, len - (buf - orig_buf));
+		if(next == NULL) {
+			break;
+		}
+		n++;
+		buf = next;
+	}
+	return n;
+}
+
 // it will write to the first block the head of the selection
 // it expects extra unused block at the end?
 int
@@ -201,7 +218,7 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 				next_back_len
 			);
 			next->len = next_back_len;
-			// FIXME: next->nlines
+			next->nlines = count_chr(next->buf, '\n', next->len);
 		} else {
 			// join the next block
 			memcpy(
@@ -253,6 +270,10 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 		}
 	}
 	
+	for(int i = 0; i < nmod; i++) {
+		blk[i].nlines = count_chr(blk[i].buf, '\n', blk[i].len);
+	}
+
 	memcpy(&buffer->block[rng->start.blk], blk, nmod * sizeof(blk[0]));
 	
 	rng->end = new_end;
