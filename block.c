@@ -83,6 +83,7 @@ buffer_read(buffer_t *buffer, range_t *rng, char *mod, int len /* 0..BLOCK_SIZE 
 		// FIXME: check for NULL / xmalloc
 		blk[i].buf = malloc(BLOCK_SIZE);
 		blk[i].len = BLOCK_SIZE;
+		blk[i].nlines = 0;
 	}
 
 	// headSEL SEL SELtail
@@ -111,6 +112,7 @@ buffer_read_fd(buffer_t *buffer, range_t *rng, int fd)
 		// FIXME: check for NULL / xmalloc
 		blk[i].buf = malloc(BLOCK_SIZE);
 		blk[i].len = BLOCK_SIZE;
+		blk[i].nlines = 0;
 	}
 
 	// headSEL SEL SELtail
