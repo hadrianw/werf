@@ -71,12 +71,6 @@ buffer_free(buffer_t *buffer)
 
 #define LEN_TO_NBLOCKS(x) (((x) + BLOCK_SIZE - 1) / BLOCK_SIZE)
 
-void
-buffer_copy_head(buffer_t *buffer, range_t *rng, block_t *blk)
-{
-	memcpy(blk->buf, buffer->block[rng->start.blk].buf, rng->start.off);
-}
-
 int buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int len);
 
 int
