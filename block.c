@@ -147,6 +147,41 @@ count_chr(const void *buf, int c, size_t len)
 	return n;
 }
 
+static size_t
+index_nrchr(const void *buf, int c, size_t len, size_t nr)
+{
+	size_t n = 0;
+	const void *orig_buf = buf;
+	const void *next;
+	for(; n < nr;) {
+		next = memchr(buf, c, len - (buf - orig_buf));
+		if(next == NULL) {
+			break;
+		}
+		n++;
+		buf = next;
+	}
+	return buf - orig_buf;
+}
+
+void
+buffer_nr_to_address(buffer_t *buffer, int64_t nr, address_t *adr)
+{
+	// OPTIM?: search backwards if nr > buffer->nlines/2
+
+	int64_t sofar = 0;
+
+	for(int i = 0; i < buffer->nblocks; i++) {
+		// FIXME:
+		if(sofar >= nr) {
+			adr->blk = i;
+			adr->off = index_nrchr(buffer->block[i].buf, '\n', buffer->block[i].len, sofar - nr);
+			return;
+		}
+		sofar += buffer->block[i].nlines;
+	}
+}
+
 // it will write to the first block the head of the selection
 // it expects extra unused block at the end?
 int
