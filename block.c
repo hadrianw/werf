@@ -143,6 +143,7 @@ count_chr(const void *buf, int c, size_t len)
 		}
 		n++;
 		buf = next;
+		buf++;
 	}
 	return n;
 }
