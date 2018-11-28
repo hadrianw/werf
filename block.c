@@ -212,6 +212,7 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 		&buffer->block[rng->end.blk].buf[rng->end.off],
 		tail_front_len
 	);
+	blk[nmod-1].len += tail_front_len;
 	total += tail_front_len;
 
 	nmod = LEN_TO_NBLOCKS(total);
