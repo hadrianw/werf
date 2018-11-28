@@ -143,6 +143,7 @@ count_chr(const void *buf, int c, size_t len)
 		}
 		n++;
 		buf = next;
+		buf++;
 	}
 	return n;
 }
@@ -201,7 +202,7 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 	int last_capacity = BLOCK_SIZE - blk[nmod-1].len;
 
 	// prepare the new end
-	address_t new_end = {rng->start.blk + nmod, blk[nmod - 1].len};
+	address_t new_end = {rng->start.blk + nmod - 1, blk[nmod - 1].len};
 
 	// SELtail
 	// copy the tail of the last selected block as much as possible to the last modified
@@ -366,7 +367,14 @@ buffer_write_fd(buffer_t *buffer, range_t *rng, int fd)
 int
 main(int argc, char *argv[])
 {
-	
+	buffer_t buf = {0};
+	buffer_init(&buf, 1);
+	range_t rng = {0};
+	int len;
+	do {
+		len = buffer_read_fd(&buf, &rng, 0);
+		rng.start = rng.end;
+	} while(len > 0);
 	return 0;
 }
 
