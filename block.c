@@ -201,7 +201,7 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 	int last_capacity = BLOCK_SIZE - blk[nmod-1].len;
 
 	// prepare the new end
-	address_t new_end = {rng->start.blk + nmod, blk[nmod - 1].len};
+	address_t new_end = {rng->start.blk + nmod - 1, blk[nmod - 1].len};
 
 	// SELtail
 	// copy the tail of the last selected block as much as possible to the last modified
