@@ -366,7 +366,14 @@ buffer_write_fd(buffer_t *buffer, range_t *rng, int fd)
 int
 main(int argc, char *argv[])
 {
-	
+	buffer_t buf = {0};
+	buffer_init(&buf, 1);
+	range_t rng = {0};
+	int len;
+	do {
+		len = buffer_read_fd(&buf, &rng, 0);
+		rng.start = rng.end;
+	} while(len > 0);
 	return 0;
 }
 
