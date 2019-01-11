@@ -20,7 +20,7 @@
 typedef struct {
 	int len; // 0..BLOCK_SIZE
 	int nlines; // 0..BLOCK_SIZE
-	char (*buf)[BLOCK_SIZE]; // != NULL
+	struct blockbuf { char buf[BLOCK_SIZE]; } *p; // != NULL
 } block_t;
 
 typedef struct {
@@ -85,7 +85,7 @@ buffer_init(buffer_t *buffer, int nblocks)
 	buffer->block = xcalloc(nblocks, sizeof(*buffer->block));
 	for(int i = 0; i < nblocks; i++) {
 		// FIXME: check for NULL / xmalloc
-		buffer->block[i].buf = xmalloc(BLOCK_SIZE);
+		buffer->block[i].p = xmalloc(BLOCK_SIZE);
 	}
 	buffer->nlines = 0;
 	buffer->nblocks = nblocks;
@@ -95,7 +95,7 @@ void
 buffer_free(buffer_t *buffer)
 {
 	for(int i = 0; i < buffer->nblocks; i++) {
-		free(buffer->block[i].buf);
+		free(buffer->block[i].p);
 	}
 	free(buffer->block);
 }
@@ -111,22 +111,22 @@ buffer_read(buffer_t *buffer, range_t *rng, char *mod, int len /* 0..BLOCK_SIZE 
 	block_t blk[3];
 
 	for(unsigned i = 0; i < LEN(blk); i++) {
-		blk[i].buf = xmalloc(BLOCK_SIZE);
+		blk[i].p = xmalloc(BLOCK_SIZE);
 		blk[i].len = BLOCK_SIZE;
 		blk[i].nlines = 0;
 	}
 
 	// headSEL SEL SELtail
 	// copy the head of the first selected block
-	memcpy(blk[0].buf, buffer->block[rng->start.blk].buf, rng->start.off);
+	memcpy(blk[0].p->buf, buffer->block[rng->start.blk].p->buf, rng->start.off);
 	
 	// copy the front of mod
 	int mod_front_len = MIN(len, BLOCK_SIZE - rng->start.off);
-	memcpy(&blk[0].buf[rng->start.off], mod, mod_front_len);
+	memcpy(&blk[0].p->buf[rng->start.off], mod, mod_front_len);
 
 	// copy the back of mod (if at all)
 	int mod_back_len = len - mod_front_len;
-	memcpy(blk[1].buf, mod, mod_back_len);
+	memcpy(blk[1].p->buf, mod, mod_back_len);
 
 	return buffer_read_blocks(buffer, rng, blk, LEN(blk), len);
 }
@@ -140,19 +140,19 @@ buffer_read_fd(buffer_t *buffer, range_t *rng, int fd)
 
 	for(unsigned i = 0; i < LEN(blk); i++) {
 		// FIXME: check for NULL / xmalloc
-		blk[i].buf = xmalloc(BLOCK_SIZE);
+		blk[i].p = xmalloc(BLOCK_SIZE);
 		blk[i].len = BLOCK_SIZE;
 		blk[i].nlines = 0;
 	}
 
 	// headSEL SEL SELtail
 	// copy the head of the first selected block
-	memcpy(blk[0].buf, buffer->block[rng->start.blk].buf, rng->start.off);
-	iov[0].iov_base = &blk[0].buf[rng->start.off];
+	memcpy(blk[0].p->buf, buffer->block[rng->start.blk].p->buf, rng->start.off);
+	iov[0].iov_base = &blk[0].p->buf[rng->start.off];
 	iov[0].iov_len = BLOCK_SIZE - rng->start.off;
 
 	for(unsigned i = 1; i < LEN(iov); i++) {
-		iov[i].iov_base = blk[i].buf;
+		iov[i].iov_base = blk[i].p->buf;
 		iov[i].iov_len = BLOCK_SIZE;
 	}
 	ssize_t len = readv(fd, iov, LEN(iov));
@@ -206,7 +206,7 @@ buffer_nr_to_address(buffer_t *buffer, int64_t nr, address_t *adr)
 		// FIXME:
 		if(sofar >= nr) {
 			adr->blk = i;
-			adr->off = index_nrchr(buffer->block[i].buf, '\n', buffer->block[i].len, sofar - nr);
+			adr->off = index_nrchr(buffer->block[i].p->buf, '\n', buffer->block[i].len, sofar - nr);
 			return;
 		}
 		sofar += buffer->block[i].nlines;
@@ -239,8 +239,8 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 	int tail_len = buffer->block[rng->end.blk].len - rng->end.off;
 	int tail_front_len = MIN(tail_len, last_capacity);
 	memcpy(
-		&blk[nmod-1].buf[blk[nmod-1].len],
-		&buffer->block[rng->end.blk].buf[rng->end.off],
+		&blk[nmod-1].p->buf[blk[nmod-1].len],
+		&buffer->block[rng->end.blk].p->buf[rng->end.off],
 		tail_front_len
 	);
 	blk[nmod-1].len += tail_front_len;
@@ -251,8 +251,8 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 	// copy the rest of the tail to the extra block (if at all)
 	int tail_back_len = tail_len - tail_front_len;
 	memcpy(
-		&blk[nmod-1].buf,
-		&buffer->block[rng->end.blk].buf[rng->end.off+tail_front_len],
+		&blk[nmod-1].p->buf,
+		&buffer->block[rng->end.blk].p->buf[rng->end.off+tail_front_len],
 		tail_back_len
 	);
 	total += tail_back_len;
@@ -273,24 +273,25 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 			int next_front_len = next->len - next_back_len;
 			// take the front of the next block
 			memcpy(
-				&blk[nmod-1].buf[blk[nmod-1].len],
-				next->buf,
+				&blk[nmod-1].p->buf[blk[nmod-1].len],
+				next->p->buf,
 				next_front_len
 			);
 			blk[nmod-1].len += next_front_len;
 			// shift the back of the next block
 			memmove(
-				next->buf,
-				&next->buf[next_front_len],
+				next->p->buf,
+				&next->p->buf[next_front_len],
 				next_back_len
 			);
 			next->len = next_back_len;
-			next->nlines = count_chr(next->buf, '\n', next->len);
+			next->nlines = count_chr(next->p->buf, '\n', next->len);
 		} else {
+			puts("join");
 			// join the next block
 			memcpy(
-				&blk[nmod-1].buf[blk[nmod-1].len],
-				next->buf,
+				&blk[nmod-1].p->buf[blk[nmod-1].len],
+				next->p->buf,
 				next->len
 			);
 			blk[nmod-1].len += next->len;
@@ -308,12 +309,12 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 
 	if(nmod < nsel) {
 		for(int i = mod_end; i < sel_end; i++) {
-			free(buffer->block[i].buf);
+			free(buffer->block[i].p);
 		}
-		memmove(
+		blockmove(
 			&buffer->block[mod_end],
 			&buffer->block[sel_end],
-			(buffer->nblocks - sel_end) * sizeof(buffer->block[0])
+			buffer->nblocks - sel_end
 		);
 	}
 	
@@ -331,13 +332,14 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 			buffer->block[i].len = 0;
 			buffer->block[i].nlines = 0;
 			// FIXME: check for NULL / xmalloc
-			buffer->block[i].buf = xmalloc(BLOCK_SIZE);
+			buffer->block[i].p = xmalloc(BLOCK_SIZE);
 		}
 	}
 
 	buffer->nblocks = buffer->nblocks - nsel + nmod;
+
 	for(int i = 0; i < nmod; i++) {
-		blk[i].nlines = count_chr(blk[i].buf, '\n', blk[i].len);
+		blk[i].nlines = count_chr(blk[i].p->buf, '\n', blk[i].len);
 	}
 
 	for(int i = 0; i < nmod; i++) {
@@ -349,7 +351,7 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 
 out:
 	for(int i = nmod; i < nblk; i++) {
-		free(blk[i].buf);
+		free(blk[i].p);
 	}
 	return len;
 }
@@ -361,14 +363,14 @@ buffer_write_fd(buffer_t *buffer, range_t *rng, int fd)
 	int nsel = rng->end.blk - rng->start.blk + 1;
 	int niov = MIN(nsel, (int)LEN(iov));
 
-	iov[0].iov_base = &buffer->block[rng->start.blk].buf[rng->start.off];
+	iov[0].iov_base = &buffer->block[rng->start.blk].p->buf[rng->start.off];
 	if(nsel == 1) {
 		iov[0].iov_len = rng->end.off - rng->start.off;
 	} else {
 		iov[0].iov_len = buffer->block[rng->start.blk].len - rng->start.off;
 	}
 	for(int i = 1; i < niov; i++) {
-		iov[i].iov_base = buffer->block[rng->start.blk + i].buf;
+		iov[i].iov_base = buffer->block[rng->start.blk + i].p->buf;
 		iov[i].iov_len = buffer->block[rng->start.blk + i].len;
 	}
 	if(nsel > 1 && nsel == niov) {
