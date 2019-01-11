@@ -375,6 +375,8 @@ main(int argc, char *argv[])
 		len = buffer_read_fd(&buf, &rng, 0);
 		rng.start = rng.end;
 	} while(len > 0);
+
+	buffer_free(&buf);
 	return 0;
 }
 
