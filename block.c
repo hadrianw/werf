@@ -340,6 +340,9 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 		blk[i].nlines = count_chr(blk[i].buf, '\n', blk[i].len);
 	}
 
+	for(int i = 0; i < nmod; i++) {
+		free(buffer->block[rng->start.blk + i].p);
+	}
 	memcpy(&buffer->block[rng->start.blk], blk, nmod * sizeof(blk[0]));
 	
 	rng->end = new_end;
