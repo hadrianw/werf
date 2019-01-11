@@ -41,20 +41,51 @@ typedef struct {
 } range_t;
 
 void*
-reallocarray(void *optr, size_t nmemb, size_t elem_size)
+xmalloc(size_t size)
+{
+	void *ptr = malloc(size);
+	if(ptr == NULL) {
+		abort();
+	}
+	return ptr;
+}
+
+void*
+xcalloc(size_t nmemb, size_t elem_size)
+{
+	void *ptr = calloc(nmemb, elem_size);
+	if(ptr == NULL) {
+		abort();
+	}
+	return ptr;
+}
+
+void*
+xreallocarray(void *optr, size_t nmemb, size_t elem_size)
 {
 	// FIXME: overflow check
-	return realloc(optr, nmemb*elem_size);
+	void *ptr = realloc(optr, nmemb*elem_size);
+	if(ptr == NULL) {
+		abort();
+	}
+	return ptr;
+}
+
+void *
+blockmove(block_t *dest, const block_t *src, size_t n)
+{
+	memmove(dest, src, n * sizeof(src[0]));
+	return dest;
 }
 
 void
 buffer_init(buffer_t *buffer, int nblocks)
 {
 	// FIXME: check for NULL / xrealloc
-	buffer->block = calloc(nblocks, sizeof(*buffer->block));
+	buffer->block = xcalloc(nblocks, sizeof(*buffer->block));
 	for(int i = 0; i < nblocks; i++) {
 		// FIXME: check for NULL / xmalloc
-		buffer->block[i].buf = malloc(BLOCK_SIZE);
+		buffer->block[i].buf = xmalloc(BLOCK_SIZE);
 	}
 	buffer->nlines = 0;
 	buffer->nblocks = nblocks;
@@ -80,8 +111,7 @@ buffer_read(buffer_t *buffer, range_t *rng, char *mod, int len /* 0..BLOCK_SIZE 
 	block_t blk[3];
 
 	for(unsigned i = 0; i < LEN(blk); i++) {
-		// FIXME: check for NULL / xmalloc
-		blk[i].buf = malloc(BLOCK_SIZE);
+		blk[i].buf = xmalloc(BLOCK_SIZE);
 		blk[i].len = BLOCK_SIZE;
 		blk[i].nlines = 0;
 	}
@@ -110,7 +140,7 @@ buffer_read_fd(buffer_t *buffer, range_t *rng, int fd)
 
 	for(unsigned i = 0; i < LEN(blk); i++) {
 		// FIXME: check for NULL / xmalloc
-		blk[i].buf = malloc(BLOCK_SIZE);
+		blk[i].buf = xmalloc(BLOCK_SIZE);
 		blk[i].len = BLOCK_SIZE;
 		blk[i].nlines = 0;
 	}
@@ -287,25 +317,24 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 		);
 	}
 	
-	// FIXME: check for NULL / xreallocarray
-	buffer->block = reallocarray(buffer->block,
-		buffer->nblocks, sizeof(buffer->block[0])
+	buffer->block = xreallocarray(buffer->block,
+		buffer->nblocks - nsel + nmod, sizeof(buffer->block[0])
 	);
-	
+
 	if(nmod > nsel) {
-		memmove(
+		blockmove(
 			&buffer->block[mod_end],
 			&buffer->block[sel_end],
-			(buffer->nblocks - sel_end) * sizeof(buffer->block[0])
+			buffer->nblocks - sel_end
 		);
 		for(int i = sel_end; i < mod_end; i++) {
 			buffer->block[i].len = 0;
 			buffer->block[i].nlines = 0;
 			// FIXME: check for NULL / xmalloc
-			buffer->block[i].buf = malloc(BLOCK_SIZE);
+			buffer->block[i].buf = xmalloc(BLOCK_SIZE);
 		}
 	}
-	
+
 	buffer->nblocks = buffer->nblocks - nsel + nmod;
 	for(int i = 0; i < nmod; i++) {
 		blk[i].nlines = count_chr(blk[i].buf, '\n', blk[i].len);
