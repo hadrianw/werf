@@ -287,7 +287,6 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 		);
 	}
 	
-	buffer->nblocks = buffer->nblocks - nsel + nmod;
 	// FIXME: check for NULL / xreallocarray
 	buffer->block = reallocarray(buffer->block,
 		buffer->nblocks, sizeof(buffer->block[0])
@@ -307,6 +306,7 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 		}
 	}
 	
+	buffer->nblocks = buffer->nblocks - nsel + nmod;
 	for(int i = 0; i < nmod; i++) {
 		blk[i].nlines = count_chr(blk[i].buf, '\n', blk[i].len);
 	}
