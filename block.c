@@ -344,15 +344,12 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nmod, const
 	buffer->nblocks = buffer->nblocks - nsel + nmod;
 
 	int mod_nlines_new = 0;
+	int mod_nlines_old = 0;
 
 	for(int i = 0; i < nmod; i++) {
 		blk[i].nlines = count_chr(blk[i].p->buf, '\n', blk[i].len);
 		mod_nlines_new += blk[i].nlines;
-	}
 
-	int mod_nlines_old = 0;
-
-	for(int i = 0; i < nmod; i++) {
 		mod_nlines_old += buffer->block[rng->start.blk + i].nlines;
 		free(buffer->block[rng->start.blk + i].p);
 	}
