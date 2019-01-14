@@ -228,7 +228,10 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 
 	int total = rng->start.off + len; // 0..BLOCK_SIZE*LEN(blk)
 	nmod = LEN_TO_NBLOCKS(total);
-	blk[nmod-1].len = total % BLOCK_SIZE;
+	int reminder = total % BLOCK_SIZE;
+	if(reminder > 0) {
+		blk[nmod-1].len = reminder;
+	}
 	int last_capacity = BLOCK_SIZE - blk[nmod-1].len;
 
 	// prepare the new end
@@ -259,7 +262,10 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 
 	nmod = LEN_TO_NBLOCKS(total);
 
-	blk[nmod-1].len = total % BLOCK_SIZE;
+	reminder = total % BLOCK_SIZE;
+	if(reminder > 0) {
+		blk[nmod-1].len = reminder;
+	}
 
 	// if last modified block would be too small
 	if(rng->end.blk < buffer->nblocks-1 &&
