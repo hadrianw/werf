@@ -113,21 +113,24 @@ buffer_read(buffer_t *buffer, range_t *rng, char *mod, int len /* 0..BLOCK_SIZE 
 
 	for(unsigned i = 0; i < LEN(blk); i++) {
 		blk[i].p = xmalloc(BLOCK_SIZE);
-		blk[i].len = BLOCK_SIZE;
+		blk[i].len = 0;
 		blk[i].nlines = 0;
 	}
 
 	// headSEL SEL SELtail
 	// copy the head of the first selected block
 	memcpy(blk[0].p->buf, buffer->block[rng->start.blk].p->buf, rng->start.off);
+	blk[0].len += rng->start.off;
 	
 	// copy the front of mod
 	int mod_front_len = MIN(len, BLOCK_SIZE - rng->start.off);
 	memcpy(&blk[0].p->buf[rng->start.off], mod, mod_front_len);
+	blk[0].len += mod_front_len;
 
 	// copy the back of mod (if at all)
 	int mod_back_len = len - mod_front_len;
 	memcpy(blk[1].p->buf, mod, mod_back_len);
+	blk[1].len += mod_back_len;
 
 	return buffer_read_blocks(buffer, rng, blk, LEN(blk), len);
 }
@@ -250,6 +253,10 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 	blk[nmod-1].len += tail_front_len;
 	total += tail_front_len;
 
+	// FIXME: when total is 4096 then nmod = 1
+	// so later on tail_back is copied to block 0 (nmod-1)
+	// and not a block past that as it should.
+	// A blocks_append function is needed for all those to simplify and fix it.
 	nmod = LEN_TO_NBLOCKS(total);
 
 	// copy the rest of the tail to the extra block (if at all)
