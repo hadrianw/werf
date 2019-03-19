@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <assert.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -410,11 +411,34 @@ main(int argc, char *argv[])
 	buffer_t buf = {0};
 	buffer_init(&buf, 1);
 	range_t rng = {0};
+	int fd;
 	int len;
+
+	fd = open(argv[1], O_RDONLY);
 	do {
-		len = buffer_read_fd(&buf, &rng, 0);
+		len = buffer_read_fd(&buf, &rng, fd);
 		rng.start = rng.end;
 	} while(len > 0);
+
+	{
+		size_t len = 0;
+		size_t nl = 0;
+		for(int i = 0; i < buf.nblocks; i++) {
+			len += buf.block[i].len;
+			nl += buf.block[i].nlines;
+		}
+		fprintf(stderr, "len %zu nl %zu nb %d\n", len, nl, buf.nblocks);
+	}
+
+	rng = (range_t){{0, BLOCK_SIZE - 10}, {1, 10}};
+	buffer_read(&buf, &rng, "dUPa", 4);
+
+	rng.start = (address_t){0, 0};
+	rng.end = (address_t){buf.nblocks-1, buf.block[buf.nblocks-1].len};
+	do {
+		len = buffer_write_fd(&buf, &rng, 1);
+	} while(len > 0);
+
 
 	buffer_free(&buf);
 	return 0;
