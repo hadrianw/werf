@@ -79,6 +79,41 @@ blockmove(block_t *dest, const block_t *src, size_t n)
 	return dest;
 }
 
+static int
+block_append(block_t *blk, int nblk, int maxblk, char *buf, int len /* 0..BLOCK_SIZE */)
+{
+	assert(nblk <= maxblk);
+	assert(maxblk > 0);
+	assert(len > 0);
+	assert(len <= BLOCK_SIZE);
+
+	if(nblk <= 0) {
+		nblk = 1;
+	}
+
+	int capacity = BLOCK_SIZE - blk[nblk-1].len;
+	if(nblk < maxblk) {
+		capacity += BLOCK_SIZE;
+	}
+
+	if(capacity < len) {
+		return -1;
+	}
+
+	capacity = BLOCK_SIZE - blk[nblk-1].len;
+	int head_len = MIN(capacity, len);
+	memcpy(&blk[nblk-1].p->buf[blk[nblk-1].len], buf, head_len);
+	blk[nblk-1].len += head_len;
+
+	nblk++;
+	capacity = BLOCK_SIZE;
+	int tail_len = len - head_len;
+	memcpy(blk[nblk-1].p->buf, &buf[head_len], tail_len);
+	blk[nblk-1].len = tail_len;
+
+	return nblk;
+}
+
 void
 buffer_init(buffer_t *buffer, int nblocks)
 {
@@ -119,20 +154,11 @@ buffer_read(buffer_t *buffer, range_t *rng, char *mod, int len /* 0..BLOCK_SIZE 
 
 	// headSEL SEL SELtail
 	// copy the head of the first selected block
-	memcpy(blk[0].p->buf, buffer->block[rng->start.blk].p->buf, rng->start.off);
-	blk[0].len += rng->start.off;
-	
-	// copy the front of mod
-	int mod_front_len = MIN(len, BLOCK_SIZE - rng->start.off);
-	memcpy(&blk[0].p->buf[rng->start.off], mod, mod_front_len);
-	blk[0].len += mod_front_len;
+	int nblk = block_append(blk, 1, LEN(blk), buffer->block[rng->start.blk].p->buf, rng->start.off);
 
-	// copy the back of mod (if at all)
-	int mod_back_len = len - mod_front_len;
-	memcpy(blk[1].p->buf, mod, mod_back_len);
-	blk[1].len += mod_back_len;
+	nblk = block_append(blk, nblk, LEN(blk), mod, len);
 
-	return buffer_read_blocks(buffer, rng, blk, LEN(blk), len);
+	return buffer_read_blocks(buffer, rng, blk, nblk, LEN(blk));
 }
 
 int
@@ -145,13 +171,13 @@ buffer_read_fd(buffer_t *buffer, range_t *rng, int fd)
 	for(unsigned i = 0; i < LEN(blk); i++) {
 		// FIXME: check for NULL / xmalloc
 		blk[i].p = xmalloc(BLOCK_SIZE);
-		blk[i].len = BLOCK_SIZE;
+		blk[i].len = 0;
 		blk[i].nlines = 0;
 	}
 
 	// headSEL SEL SELtail
 	// copy the head of the first selected block
-	memcpy(blk[0].p->buf, buffer->block[rng->start.blk].p->buf, rng->start.off);
+	int nblk = block_append(blk, 1, LEN(blk), buffer->block[rng->start.blk].p->buf, rng->start.off);
 	iov[0].iov_base = &blk[0].p->buf[rng->start.off];
 	iov[0].iov_len = BLOCK_SIZE - rng->start.off;
 
@@ -160,8 +186,19 @@ buffer_read_fd(buffer_t *buffer, range_t *rng, int fd)
 		iov[i].iov_len = BLOCK_SIZE;
 	}
 	ssize_t len = readv(fd, iov, LEN(iov));
-	
-	return buffer_read_blocks(buffer, rng, blk, LEN(blk), len);
+
+	// FIXME: check if correct
+	if(len >= 0) {
+		nblk = LEN_TO_NBLOCKS(len);
+		for(unsigned i = 0; i < nblk-1; i++) {
+			blk[i].len = BLOCK_SIZE;
+		}
+		blk[nblk-1].len = len % BLOCK_SIZE;
+	} else {
+		nblk = 0;
+	}
+
+	return buffer_read_blocks(buffer, rng, blk, nblk, LEN(blk));
 }
 
 static size_t
@@ -220,60 +257,24 @@ buffer_nr_to_address(buffer_t *buffer, int64_t nr, address_t *adr)
 // it will write to the first block the head of the selection
 // it expects extra unused block at the end?
 int
-buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int len)
+buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nmod, int maxblk)
 {
-	int nmod = 0;
-	
-	if(len < 0) {
+	if(nmod == 0) {
 		goto out;
 	}
 	
 	int nsel = rng->end.blk - rng->start.blk + 1;
 
-	int total = rng->start.off + len; // 0..BLOCK_SIZE*LEN(blk)
-	nmod = LEN_TO_NBLOCKS(total);
-	int reminder = total % BLOCK_SIZE;
-	if(reminder > 0) {
-		blk[nmod-1].len = reminder;
-	}
-	int last_capacity = BLOCK_SIZE - blk[nmod-1].len;
-
 	// prepare the new end
 	address_t new_end = {rng->start.blk + nmod - 1, blk[nmod - 1].len};
 
 	// SELtail
-	// copy the tail of the last selected block as much as possible to the last modified
-	int tail_len = buffer->block[rng->end.blk].len - rng->end.off;
-	int tail_front_len = MIN(tail_len, last_capacity);
-	memcpy(
-		&blk[nmod-1].p->buf[blk[nmod-1].len],
-		&buffer->block[rng->end.blk].p->buf[rng->end.off],
-		tail_front_len
+	// copy the tail of the last selected block
+	block_t *last_sel = &buffer->block[rng->end.blk];
+	int tail_len = last_sel->len - rng->end.off;
+	nmod = block_append(blk, nmod, maxblk,
+		&last_sel->p->buf[rng->end.off], tail_len
 	);
-	blk[nmod-1].len += tail_front_len;
-	total += tail_front_len;
-
-	// FIXME: when total is 4096 then nmod = 1
-	// so later on tail_back is copied to block 0 (nmod-1)
-	// and not a block past that as it should.
-	// A blocks_append function is needed for all those to simplify and fix it.
-	nmod = LEN_TO_NBLOCKS(total);
-
-	// copy the rest of the tail to the extra block (if at all)
-	int tail_back_len = tail_len - tail_front_len;
-	memcpy(
-		&blk[nmod-1].p->buf,
-		&buffer->block[rng->end.blk].p->buf[rng->end.off+tail_front_len],
-		tail_back_len
-	);
-	total += tail_back_len;
-
-	nmod = LEN_TO_NBLOCKS(total);
-
-	reminder = total % BLOCK_SIZE;
-	if(reminder > 0) {
-		blk[nmod-1].len = reminder;
-	}
 
 	// if last modified block would be too small
 	if(rng->end.blk < buffer->nblocks-1 &&
@@ -286,12 +287,9 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 			int next_back_len = (blk[nmod-1].len + next->len) / 2;
 			int next_front_len = next->len - next_back_len;
 			// take the front of the next block
-			memcpy(
-				&blk[nmod-1].p->buf[blk[nmod-1].len],
-				next->p->buf,
-				next_front_len
+			nmod = block_append(blk, nmod, maxblk,
+				next->p->buf, next_front_len
 			);
-			blk[nmod-1].len += next_front_len;
 			// shift the back of the next block
 			memmove(
 				next->p->buf,
@@ -303,12 +301,9 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 		} else {
 			puts("join");
 			// join the next block
-			memcpy(
-				&blk[nmod-1].p->buf[blk[nmod-1].len],
-				next->p->buf,
-				next->len
+			nmod = block_append(blk, nmod, maxblk,
+				next->p->buf, next->len
 			);
-			blk[nmod-1].len += next->len;
 			// FIXME: undo does not need the next buffer, for now it would be copied because nsel is incremented
 			next->len = 0;
 			next->nlines = 0;
@@ -345,7 +340,6 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 		for(int i = sel_end; i < mod_end; i++) {
 			buffer->block[i].len = 0;
 			buffer->block[i].nlines = 0;
-			// FIXME: check for NULL / xmalloc
 			buffer->block[i].p = xmalloc(BLOCK_SIZE);
 		}
 	}
@@ -364,9 +358,10 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int l
 	rng->end = new_end;
 
 out:
-	for(int i = nmod; i < nblk; i++) {
+	for(int i = nmod; i < maxblk; i++) {
 		free(blk[i].p);
 	}
+	// FIXME: len!!!
 	return len;
 }
 
