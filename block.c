@@ -1,3 +1,7 @@
+#if 0
+exec gcc -Og -g -std=c99 -Wall -Wextra -pedantic block.c -o block
+#endif
+
 #define _GNU_SOURCE
 #include <assert.h>
 #include <fcntl.h>
