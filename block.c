@@ -361,15 +361,22 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nmod, const
 
 	buffer->nblocks = buffer->nblocks - nsel + nmod;
 
-	for(int i = 0; i < nmod; i++) {
-		blk[i].nlines = count_chr(blk[i].p->buf, '\n', blk[i].len);
-	}
+	int mod_nlines_new = 0;
 
 	for(int i = 0; i < nmod; i++) {
+		blk[i].nlines = count_chr(blk[i].p->buf, '\n', blk[i].len);
+		mod_nlines_new += blk[i].nlines;
+	}
+
+	int mod_nlines_old = 0;
+
+	for(int i = 0; i < nmod; i++) {
+		mod_nlines_old += buffer->block[rng->start.blk + i].nlines;
 		free(buffer->block[rng->start.blk + i].p);
 	}
 	memcpy(&buffer->block[rng->start.blk], blk, nmod * sizeof(blk[0]));
 	
+	buffer->nlines += mod_nlines_new - mod_nlines_old;
 	rng->end = new_end;
 
 out:
@@ -444,6 +451,7 @@ main(int argc, char *argv[])
 			nl += buf.block[i].nlines;
 		}
 		fprintf(stderr, "len %zu nl %zu nb %d\n", len, nl, buf.nblocks);
+		fprintf(stderr, ".nl %ld\n", buf.nlines);
 	}
 
 	rng = (range_t){{0, BLOCK_SIZE - 10}, {1, 10}};
@@ -452,6 +460,7 @@ main(int argc, char *argv[])
 	for(int i = 0; i < buf.nblocks; i++) {
 		fprintf(stderr, "%d: %d %d\n", i, buf.block[i].len, buf.block[i].nlines);
 	}
+	fprintf(stderr, ".nl %ld\n", buf.nlines);
 
 	rng.start = (address_t){0, 0};
 	rng.end = (address_t){buf.nblocks-1, buf.block[buf.nblocks-1].len};
