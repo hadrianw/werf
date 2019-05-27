@@ -80,15 +80,20 @@ blockmove(block_t *dest, const block_t *src, size_t n)
 }
 
 static int
-block_append(block_t *blk, int nblk, int maxblk, char *buf, int len /* 0..BLOCK_SIZE */)
+block_append(block_t *blk, int nblk, const int maxblk, char *buf, int len /* 0..BLOCK_SIZE */)
 {
+	fprintf(stderr, "ap %d\n", maxblk);
 	assert(nblk <= maxblk);
 	assert(maxblk > 0);
-	assert(len > 0);
+	assert(len >= 0);
 	assert(len <= BLOCK_SIZE);
 
 	if(nblk <= 0) {
 		nblk = 1;
+	}
+
+	if(len == 0) {
+		return nblk;
 	}
 
 	int capacity = BLOCK_SIZE - blk[nblk-1].len;
@@ -105,11 +110,13 @@ block_append(block_t *blk, int nblk, int maxblk, char *buf, int len /* 0..BLOCK_
 	memcpy(&blk[nblk-1].p->buf[blk[nblk-1].len], buf, head_len);
 	blk[nblk-1].len += head_len;
 
-	nblk++;
 	capacity = BLOCK_SIZE;
 	int tail_len = len - head_len;
-	memcpy(blk[nblk-1].p->buf, &buf[head_len], tail_len);
-	blk[nblk-1].len = tail_len;
+	if(tail_len > 0) {
+		nblk++;
+		memcpy(blk[nblk-1].p->buf, &buf[head_len], tail_len);
+		blk[nblk-1].len = tail_len;
+	}
 
 	return nblk;
 }
@@ -138,13 +145,13 @@ buffer_free(buffer_t *buffer)
 
 #define LEN_TO_NBLOCKS(x) (((x) + BLOCK_SIZE - 1) / BLOCK_SIZE)
 
-int buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int len);
+int buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nblk, int maxblk, int len);
 
 int
 buffer_read(buffer_t *buffer, range_t *rng, char *mod, int len /* 0..BLOCK_SIZE */)
 {
 	// one extra block may be needed for the tail of the selection
-	block_t blk[3];
+	block_t blk[4];
 
 	for(unsigned i = 0; i < LEN(blk); i++) {
 		blk[i].p = xmalloc(BLOCK_SIZE);
@@ -158,7 +165,7 @@ buffer_read(buffer_t *buffer, range_t *rng, char *mod, int len /* 0..BLOCK_SIZE 
 
 	nblk = block_append(blk, nblk, LEN(blk), mod, len);
 
-	return buffer_read_blocks(buffer, rng, blk, nblk, LEN(blk));
+	return buffer_read_blocks(buffer, rng, blk, nblk, LEN(blk), len);
 }
 
 int
@@ -167,6 +174,8 @@ buffer_read_fd(buffer_t *buffer, range_t *rng, int fd)
 	struct iovec iov[8];
 	// one extra block may be needed for the tail of the selection
 	block_t blk[LEN(iov)+1];
+
+	fprintf(stderr, "so %zu %zu\n", LEN(iov), LEN(blk));
 
 	for(unsigned i = 0; i < LEN(blk); i++) {
 		// FIXME: check for NULL / xmalloc
@@ -190,7 +199,7 @@ buffer_read_fd(buffer_t *buffer, range_t *rng, int fd)
 	// FIXME: check if correct
 	if(len >= 0) {
 		nblk = LEN_TO_NBLOCKS(len);
-		for(unsigned i = 0; i < nblk-1; i++) {
+		for(int i = 0; i < nblk-1; i++) {
 			blk[i].len = BLOCK_SIZE;
 		}
 		blk[nblk-1].len = len % BLOCK_SIZE;
@@ -198,23 +207,24 @@ buffer_read_fd(buffer_t *buffer, range_t *rng, int fd)
 		nblk = 0;
 	}
 
-	return buffer_read_blocks(buffer, rng, blk, nblk, LEN(blk));
+	return buffer_read_blocks(buffer, rng, blk, nblk, LEN(blk), len);
 }
 
 static size_t
 count_chr(const void *buf, int c, size_t len)
 {
 	size_t n = 0;
-	const void *orig_buf = buf;
-	const void *next;
+	const char *pbuf = buf;
+	const char *orig_buf = buf;
+	const char *next;
 	for(;;) {
-		next = memchr(buf, c, len - (buf - orig_buf));
+		next = memchr(pbuf, c, len - (pbuf - orig_buf));
 		if(next == NULL) {
 			break;
 		}
 		n++;
-		buf = next;
-		buf++;
+		pbuf = next;
+		pbuf++;
 	}
 	return n;
 }
@@ -223,17 +233,18 @@ static size_t
 index_nrchr(const void *buf, int c, size_t len, size_t nr)
 {
 	size_t n = 0;
-	const void *orig_buf = buf;
-	const void *next;
+	const char *pbuf = buf;
+	const char *orig_buf = buf;
+	const char *next;
 	for(; n < nr;) {
-		next = memchr(buf, c, len - (buf - orig_buf));
+		next = memchr(buf, c, len - (pbuf - orig_buf));
 		if(next == NULL) {
 			break;
 		}
 		n++;
-		buf = next;
+		pbuf = next;
 	}
-	return buf - orig_buf;
+	return pbuf - orig_buf;
 }
 
 void
@@ -257,9 +268,9 @@ buffer_nr_to_address(buffer_t *buffer, int64_t nr, address_t *adr)
 // it will write to the first block the head of the selection
 // it expects extra unused block at the end?
 int
-buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nmod, int maxblk)
+buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nmod, const int maxblk, int len)
 {
-	if(nmod == 0) {
+	if(len < 0) {
 		goto out;
 	}
 	
@@ -361,7 +372,6 @@ out:
 	for(int i = nmod; i < maxblk; i++) {
 		free(blk[i].p);
 	}
-	// FIXME: len!!!
 	return len;
 }
 
@@ -434,6 +444,10 @@ main(int argc, char *argv[])
 
 	rng = (range_t){{0, BLOCK_SIZE - 10}, {1, 10}};
 	buffer_read(&buf, &rng, "dUPa", 4);
+
+	for(int i = 0; i < buf.nblocks; i++) {
+		fprintf(stderr, "%d: %d %d\n", i, buf.block[i].len, buf.block[i].nlines);
+	}
 
 	rng.start = (address_t){0, 0};
 	rng.end = (address_t){buf.nblocks-1, buf.block[buf.nblocks-1].len};
