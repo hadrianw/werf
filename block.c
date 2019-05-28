@@ -251,24 +251,6 @@ index_nrchr(const void *buf, int c, size_t len, size_t nr)
 	return pbuf - orig_buf;
 }
 
-void
-buffer_nr_to_address(buffer_t *buffer, int64_t nr, address_t *adr)
-{
-	// OPTIM?: search backwards if nr > buffer->nlines/2
-
-	int64_t sofar = 0;
-
-	for(int i = 0; i < buffer->nblocks; i++) {
-		// FIXME:
-		if(sofar >= nr) {
-			adr->blk = i;
-			adr->off = index_nrchr(buffer->block[i].p->buf, '\n', buffer->block[i].len, sofar - nr);
-			return;
-		}
-		sofar += buffer->block[i].nlines;
-	}
-}
-
 // it will write to the first block the head of the selection
 // it expects extra unused block at the end?
 int
@@ -454,6 +436,7 @@ main(int argc, char *argv[])
 		fprintf(stderr, ".nl %ld\n", buf.nlines);
 	}
 
+	// replace on a block boundary
 	rng = (range_t){{0, BLOCK_SIZE - 10}, {1, 10}};
 	buffer_read(&buf, &rng, "dUPa", 4);
 
@@ -461,6 +444,9 @@ main(int argc, char *argv[])
 		fprintf(stderr, "%d: %d %d\n", i, buf.block[i].len, buf.block[i].nlines);
 	}
 	fprintf(stderr, ".nl %ld\n", buf.nlines);
+
+	// more blocks
+	// less blocks
 
 	rng.start = (address_t){0, 0};
 	rng.end = (address_t){buf.nblocks-1, buf.block[buf.nblocks-1].len};
@@ -473,45 +459,71 @@ main(int argc, char *argv[])
 	return 0;
 }
 
+void
+buffer_address_move_off(buffer_t *buffer, address_t *adr, int64_t move)
+{
+	assert(move >= 0);
+
+	for(int i = adr->blk; i < buffer->nblocks; i++) {
+		int rest = buffer->block[i].len - adr->off;
+		if(rest >= move) {
+			adr->blk = i;
+			adr->off += move;
+			return;
+		}
+		move -= rest;
+		adr->off = 0;
+	}
+}
+
+void
+buffer_nr_to_address(buffer_t *buffer, int64_t nr, address_t *adr)
+{
+	// OPTIM?: search backwards if nr > buffer->nlines/2
+
+	if(nr == 0) {
+		adr->blk = 0;
+		adr->off = 0;
+		return;
+	}
+
+	int64_t sofar = 0;
+
+	for(int i = 0; i < buffer->nblocks; i++) {
+		sofar += buffer->block[i].nlines;
+		if(nr < sofar) {
+			adr->blk = i;
+			adr->off = index_nrchr(buffer->block[i].p->buf, '\n', buffer->block[i].len, sofar - nr);
+			buffer_address_move_off(buffer, adr, 1);
+			return;
+		}
+	}
+}
+
+void
+buffer_nr_off_to_address(buffer_t *buffer, int64_t nr, int64_t off, address_t *adr)
+{
+	buffer_nr_to_address(buffer, nr, adr);
+	buffer_address_move_off(buffer, adr, off);
+}
+
+void
+buffer_address_to_nr_off(buffer_t *buffer, address_t *adr, int64_t *nr, int64_t *off)
+{
+	*nr = 0;
+	for(int i = 0; i < adr->blk-1; i++) {
+		*nr += buffer->block[i].nlines;
+	}
+
+}
+
 /*
+nr and offset to buffer address
 // Get a block position for an address in a buffer
 // Potential optimalizations:
 // - begin search from block index and line number
 // 	could be useful having just return a block index for a line number
 // 	additional parameters: uint32_t start_block, uint64_t start_nr
 // - search from the end for adr->nr > buffer->nlines/2
-block_pos_t
-buffer_address_to_block_pos(buffer_t *buffer, address_t *adr)
-{	// 2= [0]_1_2__   0= _____   2= __3__4_
-	uint64_t nr = 0;
-	for(uint32_t i = 0; i < buffer->nblocks; i++) {
-		nr += buffer->block[i].nlines;
-		if(nr >= adr.nr) {
-			char *prev_line = buffer->block[i].data.buf;
-			char *line = buffer->block[i].data.buf;
-			uint16_t rest = buffer->block[i].len;
-			for(nr -= buffer->block[i].nlines; ; nr++) {
-				line = memchr(prev_line, '\n', rest);
-				if(line != NULL) {
-					line++;
-					rest -= line - prev_line;
-				} else {
-					assert(1 || "broken line count cache");
-					return BLOCK_NOT_FOUND;
-				}
-				if(nr == adr.nr) {
-					uint16_t off;
-					if(rest <= adr.off) {
-						off = //this block
-					}
-					return (block_pos_t){i, off};
-				}
-				line = prev_line;
-			}
-			return BLOCK_NOT_FOUND;
-		}
-	}
-	return BLOCK_NOT_FOUND;
-}
 */
 
