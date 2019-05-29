@@ -410,6 +410,19 @@ buffer_write_fd(buffer_t *buffer, range_t *rng, int fd)
 	return -2;
 }
 
+int64_t
+buffer_address_move_off(buffer_t *buffer, address_t *adr, int64_t move);
+void
+buffer_address_move_lines(buffer_t *buffer, address_t *adr, int64_t move);
+void
+buffer_nr_to_address(buffer_t *buffer, int64_t nr, address_t *adr);
+void
+buffer_nr_off_to_address(buffer_t *buffer, int64_t nr, int64_t off, address_t *adr);
+static int
+block_count_nl(char *buf, int len, int *nl_off);
+void
+buffer_address_to_nr_off(buffer_t *buffer, address_t *adr, int64_t *nr, int64_t *off);
+
 int
 main(int argc, char *argv[])
 {
@@ -454,6 +467,11 @@ main(int argc, char *argv[])
 		len = buffer_write_fd(&buf, &rng, 1);
 	} while(len > 0);
 
+	int64_t nr, off;
+	buffer_address_to_nr_off(&buf, &rng.end, &nr, &off);
+	fprintf(stderr, "adr %d %d n/o %ld %ld\n",
+		rng.end.blk, rng.end.off,
+		nr, off);
 
 	buffer_free(&buf);
 	return 0;
