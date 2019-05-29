@@ -494,7 +494,8 @@ buffer_address_move_lines(buffer_t *buffer, address_t *adr, int64_t move)
 		return;
 	}
 
-	for(int i = adr->blk + 1; i < buffer->nblocks &&
+	int i;
+	for(i = adr->blk + 1; i < buffer->nblocks &&
 		buffer->block[i].nlines == 0; i++);
 
 	if(i >= buffer->nblocks) {
