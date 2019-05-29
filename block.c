@@ -572,7 +572,7 @@ buffer_address_to_nr_off(buffer_t *buffer, address_t *adr, int64_t *nr, int64_t 
 	int nl_off;
 	*nr = 0;
 
-	for(; i < adr->blk-1; i++) {
+	for(; i < adr->blk; i++) {
 		*nr += buffer->block[i].nlines;
 	}
 	int count;
