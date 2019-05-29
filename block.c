@@ -474,7 +474,8 @@ buffer_address_move_off(buffer_t *buffer, address_t *adr, int64_t move)
 		move -= rest;
 		adr->off = 0;
 	}
-	// would be 0 most of the time
+	// move at this point will be > 0
+	// as it's a reminder over the end of file
 	return move;
 }
 
