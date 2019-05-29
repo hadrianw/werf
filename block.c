@@ -469,7 +469,7 @@ buffer_address_move_off(buffer_t *buffer, address_t *adr, int64_t move)
 		if(rest >= move) {
 			adr->blk = i;
 			adr->off += move;
-			return;
+			return 0;
 		}
 		move -= rest;
 		adr->off = 0;
