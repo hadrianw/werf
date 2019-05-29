@@ -580,7 +580,7 @@ buffer_address_to_nr_off(buffer_t *buffer, address_t *adr, int64_t *nr, int64_t 
 		(count = block_count_nl(buffer->block[i].p->buf, adr->off+1, &nl_off)) > 0
 	) {
 		*nr += count;
-		*off = adr->off - nl_off;
+		*off = adr->off - (nl_off + 1);
 	} else {
 		*off = adr->off;
 		for(i--; i >=0 && buffer->block[i].nlines == 0; i--) {
@@ -589,7 +589,7 @@ buffer_address_to_nr_off(buffer_t *buffer, address_t *adr, int64_t *nr, int64_t 
 		if(i >= 0) {
 			nl = memrchr(buffer->block[i].p->buf, '\n', buffer->block[i].len);
 			nl_off = nl - buffer->block[i].p->buf;
-			*off += buffer->block[i].len - nl_off + 1;
+			*off += buffer->block[i].len - (nl_off + 1);
 		}
 	}
 }
