@@ -459,7 +459,7 @@ main(int argc, char *argv[])
 	return 0;
 }
 
-void
+int64_t
 buffer_address_move_off(buffer_t *buffer, address_t *adr, int64_t move)
 {
 	assert(move >= 0);
@@ -474,6 +474,8 @@ buffer_address_move_off(buffer_t *buffer, address_t *adr, int64_t move)
 		move -= rest;
 		adr->off = 0;
 	}
+	// would be 0 most of the time
+	return move;
 }
 
 void
