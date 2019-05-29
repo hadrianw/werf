@@ -479,6 +479,35 @@ buffer_address_move_off(buffer_t *buffer, address_t *adr, int64_t move)
 }
 
 void
+buffer_address_move_lines(buffer_t *buffer, address_t *adr, int64_t move)
+{
+	char *nl;
+
+	if(buffer->block[adr->blk].nlines != 0 &&
+		(nl = memchr(
+		&buffer->block[adr->blk].p->buf[adr->off],
+		'\n', buffer->block[adr->blk].len - adr->off)) != NULL
+	) {
+		adr->off = nl - buffer->block[adr->blk].p->buf;
+		buffer_address_move_off(buffer, adr, 1);
+		return;
+	}
+
+	for(int i = adr->blk + 1; i < buffer->nblocks &&
+		buffer->block[i].nlines == 0; i++);
+
+	if(i >= buffer->nblocks) {
+		// no next new lines
+		return;
+	}
+
+	adr->blk = i;
+	nl = memchr(buffer->block[i].p->buf, '\n', buffer->block[i].len);
+	adr->off = nl - buffer->block[i].p->buf;
+	buffer_address_move_off(buffer, adr, 1);
+}
+
+void
 buffer_nr_to_address(buffer_t *buffer, int64_t nr, address_t *adr)
 {
 	// OPTIM?: search backwards if nr > buffer->nlines/2
