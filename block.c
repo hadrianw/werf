@@ -507,14 +507,58 @@ buffer_nr_off_to_address(buffer_t *buffer, int64_t nr, int64_t off, address_t *a
 	buffer_address_move_off(buffer, adr, off);
 }
 
+static int
+block_count_nl(char *buf, int len, int *nl_off)
+{
+	int count;
+	char *nl;
+
+	count = count_chr(buf, '\n', len);
+	if(count == 0) {
+		return 0;
+	}
+
+	nl = memrchr(buf, '\n', len);
+	*nl_off = nl - buf;
+	if(*nl_off == len - 1) {
+		count--;
+		nl = memrchr(buf, '\n', *nl_off);
+		*nl_off = nl - buf;
+		if(nl == NULL) {
+			return 0;
+		}
+	}
+	return count;
+}
+
 void
 buffer_address_to_nr_off(buffer_t *buffer, address_t *adr, int64_t *nr, int64_t *off)
 {
+	int i = 0;
+	char *nl;
+	int nl_off;
 	*nr = 0;
-	for(int i = 0; i < adr->blk-1; i++) {
+
+	for(; i < adr->blk-1; i++) {
 		*nr += buffer->block[i].nlines;
 	}
-
+	int count;
+	if(buffer->block[i].nlines > 0 &&
+		(count = block_count_nl(buffer->block[i].p->buf, adr->off+1, &nl_off)) > 0
+	) {
+		*nr += count;
+		*off = adr->off - nl_off;
+	} else {
+		*off = adr->off;
+		for(i--; i >=0 && buffer->block[i].nlines == 0; i--) {
+			*off += buffer->block[i].len;
+		}
+		if(i >= 0) {
+			nl = memrchr(buffer->block[i].p->buf, '\n', buffer->block[i].len);
+			nl_off = nl - buffer->block[i].p->buf;
+			*off += buffer->block[i].len - nl_off + 1;
+		}
+	}
 }
 
 /*
