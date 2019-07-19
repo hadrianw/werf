@@ -16,6 +16,7 @@ SRC = \
 	command.c \
 	utf.c \
 	edit.c \
+	block.c \
 	font.c \
 	view.c \
 	draw.c \

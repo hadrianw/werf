@@ -14,11 +14,11 @@ exec gcc -Og -g -std=c99 -Wall -Wextra -pedantic block.c -o block
 #include <unistd.h>
 #include <sys/uio.h>
 
+#include "util.h"
+
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) < (b) ? (b) : (a))
 #define LEN(a) (sizeof(a) / sizeof(a)[0])
-
-#define TEST(X) void TEST_##X(void)
 
 #define BLOCK_SIZE 4096
 
@@ -44,26 +44,6 @@ typedef struct {
 	address_t start;
 	address_t end;
 } range_t;
-
-void*
-xmalloc(size_t size)
-{
-	void *ptr = malloc(size);
-	if(ptr == NULL) {
-		abort();
-	}
-	return ptr;
-}
-
-void*
-xcalloc(size_t nmemb, size_t elem_size)
-{
-	void *ptr = calloc(nmemb, elem_size);
-	if(ptr == NULL) {
-		abort();
-	}
-	return ptr;
-}
 
 void*
 xreallocarray(void *optr, size_t nmemb, size_t elem_size)
@@ -132,7 +112,7 @@ buffer_init(buffer_t *buffer, int nblocks)
 	buffer->block = xcalloc(nblocks, sizeof(*buffer->block));
 	for(int i = 0; i < nblocks; i++) {
 		// FIXME: check for NULL / xmalloc
-		buffer->block[i].p = xmalloc(BLOCK_SIZE);
+		buffer->block[i].p = xmalloc(1, BLOCK_SIZE);
 	}
 	buffer->nlines = 0;
 	buffer->nblocks = nblocks;
@@ -158,7 +138,7 @@ buffer_read(buffer_t *buffer, range_t *rng, char *mod, int len /* 0..BLOCK_SIZE 
 	block_t blk[4];
 
 	for(unsigned i = 0; i < LEN(blk); i++) {
-		blk[i].p = xmalloc(BLOCK_SIZE);
+		blk[i].p = xmalloc(1, BLOCK_SIZE);
 		blk[i].len = 0;
 		blk[i].nlines = 0;
 	}
@@ -183,7 +163,7 @@ buffer_read_fd(buffer_t *buffer, range_t *rng, int fd)
 
 	for(unsigned i = 0; i < LEN(blk); i++) {
 		// FIXME: check for NULL / xmalloc
-		blk[i].p = xmalloc(BLOCK_SIZE);
+		blk[i].p = xmalloc(1, BLOCK_SIZE);
 		blk[i].len = 0;
 		blk[i].nlines = 0;
 	}
@@ -337,7 +317,7 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nmod, const
 		for(int i = sel_end; i < mod_end; i++) {
 			buffer->block[i].len = 0;
 			buffer->block[i].nlines = 0;
-			buffer->block[i].p = xmalloc(BLOCK_SIZE);
+			buffer->block[i].p = xmalloc(1, BLOCK_SIZE);
 		}
 	}
 
@@ -421,7 +401,7 @@ void
 buffer_address_to_nr_off(buffer_t *buffer, address_t *adr, int64_t *nr, int64_t *off);
 
 int
-main(int argc, char *argv[])
+TEST_blocks(void)
 {
 	buffer_t buf = {0};
 	buffer_init(&buf, 1);
@@ -429,7 +409,7 @@ main(int argc, char *argv[])
 	int fd;
 	int len;
 
-	fd = open(argv[1], O_RDONLY);
+	fd = open("font.c", O_RDONLY);
 	do {
 		len = buffer_read_fd(&buf, &rng, fd);
 		rng.start = rng.end;
@@ -497,6 +477,8 @@ buffer_address_move_off(buffer_t *buffer, address_t *adr, int64_t move)
 void
 buffer_address_move_lines(buffer_t *buffer, address_t *adr, int64_t move)
 {
+	(void)move;
+
 	char *nl;
 
 	if(buffer->block[adr->blk].nlines != 0 &&
