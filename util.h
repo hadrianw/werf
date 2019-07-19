@@ -4,8 +4,6 @@
 #include <sys/types.h>
 #include <assert.h>
 
-#define TEST(X) void TEST_##X()
-
 #define ABS(a) ((a) < (0) ? -(a) : (a))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) < (b) ? (b) : (a))

@@ -43,7 +43,8 @@ reallocdup(void *heap, size_t nnew, const void *stack, size_t nstack, size_t siz
 	return heap;
 }
 
-TEST(memshift) {
+int
+TEST_memshift(void) {
 	{
 		char buf[] = "abc";
 		memshift(-1, buf, sizeof(buf)-1, sizeof(buf[0]));
@@ -53,6 +54,7 @@ TEST(memshift) {
 		memshift(1, buf, sizeof(buf)-1, sizeof(buf[0]));
 		assert(!strcmp(buf, "aab"));
 	}
+	return 0;
 }
 
 void

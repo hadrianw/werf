@@ -134,7 +134,8 @@ range_mod_line(range_t *rng, char *mod_line, size_t mod_len)
 	rng->end.offset = rng->start.offset;
 }
 
-TEST(range_mod_line) {
+int
+TEST_range_mod_line(void) {
 	file_t file = { 0 };
 	file_insert_line(&file, 0, "123\n", 4);
 	file_insert_line(&file, 1, "456\n", 4);
@@ -153,6 +154,8 @@ TEST(range_mod_line) {
 	assert(is_str_eq(file.content.data[1].data, file.content.data[0].nmemb,
 		"def6\n", 5));
 	file_free(&file);
+
+	return 0;
 }
 
 static void
@@ -178,7 +181,8 @@ range_mod(range_t *rng, char *mod, size_t mod_len)
 	range_mod_line(rng, "", 0);
 }
 
-TEST(range_mod) {
+int
+TEST_range_mod(void) {
 	file_t file = { 0 };
 	file_insert_line(&file, 0, "123\n", 4);
 	file_insert_line(&file, 1, "456\n", 4);
@@ -192,6 +196,8 @@ TEST(range_mod) {
 	assert(is_str_eq(file.content.data[1].data, file.content.data[0].nmemb,
 		"def6\n", 5));
 	file_free(&file);
+
+	return 0;
 }
 
 int
@@ -247,7 +253,8 @@ range_copy(range_t *rng, char *buf, size_t bufsiz)
 	return len;
 }
 
-TEST(range_copy) {
+int
+TEST_range_copy(void) {
 	{
 		file_t file = { 0 };
 		file_insert_line(&file, 0, "123\n", 4);
@@ -274,6 +281,7 @@ TEST(range_copy) {
 		assert(is_str_eq(buf, len, "23", 2));
 		assert(!address_cmp(&rng.start, &(address_t){0, 3}));
 	}
+	return 0;
 }
 
 static void

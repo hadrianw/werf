@@ -40,25 +40,22 @@ pipe.o: pipe.h array.h
 command.o: command.h array.h view.h edit.h
 werf.o: pipe.h edit.h font.h array.h
 
-test/main.c: $(OBJ) Makefile
-	@echo generate test objects
-	@mkdir -p test
-	@cp $(OBJ) test
-	@objcopy -N main test/werf.o
-	@sh gen-test.sh $(OBJ) > test/main.c
-test/main.o: test/main.c
-test-werf.passed: test/main.o test/werf.o
-	@echo CC -o test-werf
-	@cd test && $(CC) -o ../test-werf main.o $(OBJ) $(LDFLAGS)
+tests.h: $(SRC) gen-tests.h.awk
+	@echo GEN tests.h
+	@./gen-tests.h.awk $(SRC) > tests.h
+tests.o: tests.c tests.h
+tests.passed: tests.o $(OBJ)
+	@echo CC -o tests
+	@$(CC) -o tests tests.o -Wl,--wrap=main $(OBJ) $(LDFLAGS)
 	@echo testing
-	valgrind --quiet --leak-check=full --error-exitcode=1 ./test-werf
-	mv test-werf test-werf.passed
+	valgrind --quiet --leak-check=full --error-exitcode=1 ./tests
+	mv tests tests.passed
 
-werf: $(OBJ) test-werf.passed
+werf: $(OBJ) tests.passed
 	@echo CC -o $@
 	@$(CC) -o $@ $(OBJ) $(LDFLAGS)
 
 clean:
-	rm -f werf test-werf test-werf.passed $(OBJ)
+	rm -f werf tests tests.passed tests.h $(OBJ)
 
 .PHONY: all clean
