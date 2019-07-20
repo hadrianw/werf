@@ -234,17 +234,44 @@ index_nrchr(const void *buf, int c, size_t len, size_t nr)
 {
 	size_t n = 0;
 	const char *pbuf = buf;
+	const char *chr = NULL;
 	const char *orig_buf = buf;
-	const char *next;
-	for(; n < nr;) {
-		next = memchr(buf, c, len - (pbuf - orig_buf));
-		if(next == NULL) {
+
+	for(; ( pbuf = memchr(pbuf, c, len - (pbuf - orig_buf)) ); n++) {
+		if(n == nr) {
+			chr = pbuf;
 			break;
 		}
-		n++;
-		pbuf = next;
+		pbuf++;
 	}
-	return pbuf - orig_buf;
+
+	assert(chr != NULL);
+	return chr - orig_buf;
+}
+
+int
+TEST_index_nrchr(void)
+{
+	char call[BUFSIZ];
+	size_t ret;
+	char buf[] = " a a a";
+
+	ret = TEST_CALL(call, sizeof(call), "\"%s\", '%c', %zu, %zu",
+		index_nrchr, (buf, 'a', sizeof(buf)-1, (size_t)0));
+	TEST_OP("%zu", ret, ==, (size_t)1, "%s",  call);
+
+	ret = TEST_CALL(call, sizeof(call), "\"%s\", '%c', %zu, %zu",
+		index_nrchr, (buf, 'a', sizeof(buf)-1, (size_t)2));
+	TEST_OP("%zu", ret, ==, (size_t)5, "%s",  call);
+
+	ret = TEST_CALL(call, sizeof(call), "\"%s\", '%c', %zu, %zu",
+		index_nrchr, (buf+1, 'a', sizeof(buf)-2, (size_t)0));
+	TEST_OP("%zu", ret, ==, (size_t)0, "%s",  call);
+
+	ret = TEST_CALL(call, sizeof(call), "\"%s\", '%c', %zu, %zu",
+		index_nrchr, (buf+1, 'a', sizeof(buf)-2, (size_t)2));
+	TEST_OP("%zu", ret, ==, (size_t)4, "%s",  call);
+	return 0;
 }
 
 // it will write to the first block the head of the selection
