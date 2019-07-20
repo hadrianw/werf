@@ -159,8 +159,6 @@ buffer_read_fd(buffer_t *buffer, range_t *rng, int fd)
 	// one extra block may be needed for the tail of the selection
 	block_t blk[LEN(iov)+1];
 
-	fprintf(stderr, "so %zu %zu\n", LEN(iov), LEN(blk));
-
 	for(unsigned i = 0; i < LEN(blk); i++) {
 		// FIXME: check for NULL / xmalloc
 		blk[i].p = xmalloc(1, BLOCK_SIZE);
@@ -180,13 +178,13 @@ buffer_read_fd(buffer_t *buffer, range_t *rng, int fd)
 	}
 	ssize_t len = readv(fd, iov, LEN(iov));
 
-	// FIXME: check if correct
 	if(len >= 0) {
+		int i;
 		nblk = LEN_TO_NBLOCKS(len);
-		for(int i = 0; i < nblk-1; i++) {
+		for(i = 0; i < nblk-1; i++) {
 			blk[i].len = BLOCK_SIZE;
 		}
-		blk[nblk-1].len = len % BLOCK_SIZE;
+		blk[i].len = len % BLOCK_SIZE;
 	} else {
 		nblk = 0;
 	}
