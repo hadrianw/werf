@@ -15,6 +15,7 @@ exec gcc -Og -g -std=c99 -Wall -Wextra -pedantic block.c -o block
 #include <sys/uio.h>
 
 #include "util.h"
+#include "test.h"
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) < (b) ? (b) : (a))
@@ -209,6 +210,23 @@ count_chr(const void *buf, int c, size_t len)
 		pbuf++;
 	}
 	return n;
+}
+
+int
+TEST_count_chr(void)
+{
+	char call[BUFSIZ];
+	char buf[] = " a a a";
+	size_t ret;
+
+	ret = TEST_CALL(call, sizeof(call), "\"%s\", '%c', %zu",
+		count_chr, (buf, 'a', sizeof(buf)-1));
+	TEST_OP("%zu", ret, ==, (size_t)3, call);
+
+	ret = TEST_CALL(call, sizeof(call), "\"%s\", '%c', %zu",
+		count_chr, (buf+1, 'a', sizeof(buf)-2));
+	TEST_OP("%zu", ret, ==, (size_t)3, call);
+	return 0;
 }
 
 static size_t
