@@ -106,6 +106,51 @@ block_append(block_t *blk, int nblk, const int maxblk, char *buf, int len /* 0..
 	return nblk;
 }
 
+int
+TEST_block_append(void)
+{
+	char call[BUFSIZ];
+	char buf0[] = "abc";
+	char buf1[] = "xyz";
+	char bufR[] = "abcxyz";
+	char bufB[BLOCK_SIZE + 1];
+	char bufBR[sizeof(bufR) - 1 + BLOCK_SIZE + 1] = "abcxyz";
+	int ret;
+
+	struct blockbuf blkbuf0;
+	struct blockbuf blkbuf1;
+	block_t blk[2] = {{.p = &blkbuf0}, {.p = &blkbuf1}};
+
+	ret = TEST_CALL(call, sizeof(call), "%p, %d, %d, \"%s\", %d",
+		block_append, ((void*)blk, 0, (int)LEN(blk), buf0, (int)sizeof(buf0)-1));
+	TEST_OP("%d", ret, ==, 1, "%s",  call);
+	TEST_OP("%d", blk[0].len, ==, (int)sizeof(buf0)-1, "%s", call);
+	TEST_MEMCMP_OP(blkbuf0.buf, ==, buf0, sizeof(buf0)-1, "%s", call);
+	TEST_OP("%d", blk[1].len, ==, 0, "%s", call);
+
+	ret = TEST_CALL(call, sizeof(call), "%p, %d, %d, \"%s\", %d",
+		block_append, ((void*)blk, ret, (int)LEN(blk), buf1, (int)sizeof(buf1)-1));
+	TEST_OP("%d", ret, ==, 1, "%s",  call);
+	TEST_OP("%d", blk[0].len, ==, (int)sizeof(bufR)-1, "%s", call);
+	TEST_MEMCMP_OP(blkbuf0.buf, ==, bufR, sizeof(bufR)-1, "%s", call);
+	TEST_OP("%d", blk[1].len, ==, 0, "%s", call);
+
+	// FIXME: make it a normal static buffer, instead of this whole ugly calculation
+	memset(bufB, 'B', sizeof(bufB)-1);
+	bufB[sizeof(bufB)-1] = '\0';
+	memcpy(&bufBR[sizeof(bufR)-1], bufB, sizeof(bufB));
+
+	ret = TEST_CALL(call, sizeof(call), "%p, %d, %d, \"%s\", %d",
+		block_append, ((void*)blk, ret, (int)LEN(blk), bufB, (int)sizeof(bufB)-1));
+	TEST_OP("%d", ret, ==, 2, "%s",  call);
+	TEST_OP("%d", blk[0].len, ==, (int)BLOCK_SIZE, "%s", call);
+	TEST_MEMCMP_OP(blkbuf0.buf, ==, bufBR, BLOCK_SIZE, "%s", call);
+	TEST_OP("%d", blk[1].len, ==, (int)sizeof(bufBR) - 1 - BLOCK_SIZE, "%s", call);
+	TEST_MEMCMP_OP(blkbuf1.buf, ==, &bufBR[BLOCK_SIZE], sizeof(bufR)-1, "%s", call);
+
+	return 0;
+}
+
 void
 buffer_init(buffer_t *buffer, int nblocks)
 {
@@ -487,9 +532,11 @@ TEST_blocks(void)
 
 	rng.start = (address_t){0, 0};
 	rng.end = (address_t){buf.nblocks-1, buf.block[buf.nblocks-1].len};
+	/*
 	do {
 		len = buffer_write_fd(&buf, &rng, 1);
 	} while(len > 0);
+	*/
 
 	int64_t nr, off;
 	buffer_address_to_nr_off(&buf, &rng.end, &nr, &off);
