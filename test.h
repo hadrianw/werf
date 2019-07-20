@@ -12,7 +12,7 @@
 	} } while(0)
 
 #define TEST_MEMCMP_OP(r, op, x, n, ...) \
-	do { if(! (memcmp(((r), (x), (n)) op 0)) { \
+	do { if(! (memcmp((r), (x), (n)) op 0)) { \
 		printf(__FILE__ ":%d ", __LINE__); \
 		printf(__VA_ARGS__); \
 		printf("\n\t" #r " " #op " " #x "\n" \
