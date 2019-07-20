@@ -453,6 +453,10 @@ TEST_blocks(void)
 	int len;
 
 	fd = open("font.c", O_RDONLY);
+	if(fd < 0) {
+		perror("open");
+		return -1;
+	}
 	do {
 		len = buffer_read_fd(&buf, &rng, fd);
 		rng.start = rng.end;
