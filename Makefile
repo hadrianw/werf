@@ -3,6 +3,7 @@ OPTIM = -g -O0 -Werror
 CFLAGS = -std=c1x $(OPTIM) -Wall -Wextra -pedantic \
 	-Wno-missing-field-initializers \
 	-Wno-missing-braces \
+	-Wno-overlength-strings \
 	`freetype-config --cflags` \
 	-D_POSIX_C_SOURCE=200809L
 LDFLAGS = -lrt -lcairo -lX11 `freetype-config --libs` -lfontconfig
