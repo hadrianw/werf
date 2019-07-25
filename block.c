@@ -67,7 +67,6 @@ blockmove(block_t *dest, const block_t *src, size_t n)
 static int
 block_append(block_t *blk, int nblk, const int maxblk, char *buf, int len /* 0..BLOCK_SIZE */)
 {
-	fprintf(stderr, "ap %d\n", maxblk);
 	assert(nblk <= maxblk);
 	assert(maxblk > 0);
 	assert(len >= 0);
@@ -1565,7 +1564,6 @@ buffer_read_blocks(buffer_t *buffer, range_t *rng, block_t *blk, int nmod, const
 			next->len = next_back_len;
 			next->nlines = count_chr(next->p->buf, '\n', next->len);
 		} else {
-			puts("join");
 			// join the next block
 			nmod = block_append(blk, nmod, maxblk,
 				next->p->buf, next->len
