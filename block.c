@@ -1764,9 +1764,69 @@ buffer_address_move_off(buffer_t *buffer, address_t *adr, int64_t move)
 		move -= rest;
 		adr->off = 0;
 	}
+	adr->off = buffer->block[buffer->nblocks-1].len;
 	// move at this point will be > 0
 	// as it's a reminder over the end of file
 	return move;
+}
+
+int
+TEST_buffer_address_move_off(void)
+{
+	char call[BUFSIZ];
+	int64_t ret;
+
+	block_t blks[] = {{
+		.len = 2048
+	}, {
+		.len = 3000
+	}, {
+		.len = 2500
+	}};
+	buffer_t buffer = {
+		.nblocks = LEN(blks),
+		.block = blks
+	};
+	{
+	address_t adr = {0, 2047};
+
+	ret = TEST_CALL(call, sizeof(call), "%p, %p, %ld",
+		buffer_address_move_off, ((void*)&buffer, (void*)&adr, (int64_t)1));
+	TEST_OP("%ld", ret, ==, (int64_t)0, "%s", call);
+	TEST_OP("%d", adr.blk, ==, 0, "%s", call);
+	TEST_OP("%d", adr.off, ==, 2048, "%s", call);
+
+	ret = TEST_CALL(call, sizeof(call), "%p, %p, %ld",
+		buffer_address_move_off, ((void*)&buffer, (void*)&adr, (int64_t)1));
+	TEST_OP("%ld", ret, ==, (int64_t)0, "%s", call);
+	TEST_OP("%d", adr.blk, ==, 1, "%s", call);
+	TEST_OP("%d", adr.off, ==, 1, "%s", call);
+	}
+
+	{
+	address_t adr = {0, 2000};
+	ret = TEST_CALL(call, sizeof(call), "%p, %p, %ld",
+		buffer_address_move_off, ((void*)&buffer, (void*)&adr, (int64_t)49));
+	TEST_OP("%ld", ret, ==, (int64_t)0, "%s", call);
+	TEST_OP("%d", adr.blk, ==, 1, "%s", call);
+	TEST_OP("%d", adr.off, ==, 1, "%s", call);
+	}
+
+	{
+	address_t adr = {0, 0};
+	ret = TEST_CALL(call, sizeof(call), "%p, %p, %ld",
+		buffer_address_move_off, ((void*)&buffer, (void*)&adr, (int64_t)(2048+3000+512)));
+	TEST_OP("%ld", ret, ==, (int64_t)0, "%s", call);
+	TEST_OP("%d", adr.blk, ==, 2, "%s", call);
+	TEST_OP("%d", adr.off, ==, 512, "%s", call);
+	ret = TEST_CALL(call, sizeof(call), "%p, %p, %ld",
+		buffer_address_move_off, ((void*)&buffer, (void*)&adr, (int64_t)(2000)));
+	TEST_OP("%ld", ret, ==, (int64_t)12, "%s", call);
+	TEST_OP("%d", adr.blk, ==, 2, "%s", call);
+	TEST_OP("%d", adr.off, ==, 2500, "%s", call);
+	}
+
+	return 0;
 }
 
 void
